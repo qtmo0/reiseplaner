@@ -1,0 +1,5 @@
+# Nur zum Entwickeln: baut das Image lokal statt es von ghcr.io zu laden.
+#   docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+services:
+  app:
+    build: ./app
