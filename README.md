@@ -54,7 +54,7 @@ In `.env` eintragen:
 
 - `APP_TOKEN`: Zugangscode für das allererste Konto, z. B. erzeugt mit `openssl rand -hex 24`.
 - `ANTHROPIC_API_KEY`: API-Key von [platform.claude.com](https://platform.claude.com).
-- `APP_PORT`: Standard ist 8090 (der Essen-Tracker belegt 8080).
+- `APP_PORT`: Standard ist 33055.
 
 **4. Starten:**
 
@@ -64,7 +64,7 @@ docker compose up -d
 
 Mit dem Plugin **Docker Compose Manager**: neuen Stack anlegen, als Ordner `/mnt/user/appdata/reiseplaner` angeben, dann **Compose Up**.
 
-**5. Öffnen:** `http://SERVER-IP:8090` aufrufen, „Konto anlegen“ wählen und als Code den `APP_TOKEN` eingeben. Danach eine Reise anlegen und über das Personen-Symbol den Einladungslink an die Freunde schicken. Wer ihn öffnet, legt sich ein eigenes Konto an und ist in der Reise.
+**5. Öffnen:** `http://SERVER-IP:33055` aufrufen, „Konto anlegen“ wählen und als Code den `APP_TOKEN` eingeben. Danach eine Reise anlegen und über das Personen-Symbol den Einladungslink an die Freunde schicken. Wer ihn öffnet, legt sich ein eigenes Konto an und ist in der Reise.
 
 Die Daten liegen in `./data/reiseplaner.db`. Für ein Backup reicht dieser Ordner, am sichersten bei gestopptem Container.
 
@@ -84,7 +84,7 @@ Im Compose Manager: **Update Stack**. Vollautomatisch geht es mit Watchtower; f�
 Für „Zum Home-Bildschirm“ als richtige App, für den Offline-Modus, für den eigenen Standort auf der Karte und für den Zugriff von unterwegs braucht die App HTTPS. Am einfachsten mit Tailscale auf dem Server:
 
 ```bash
-tailscale serve --bg 8090
+tailscale serve --bg 33055
 ```
 
 Deine Freunde brauchen dann Zugang zum Tailnet. Sollen sie ohne Tailscale mitplanen, braucht es einen Reverse Proxy mit eigener Domain (Nginx Proxy Manager, SWAG) oder Tailscale Funnel.
@@ -101,7 +101,7 @@ Auf dem iPhone in Safari: **Teilen → Zum Home-Bildschirm**.
 ```bash
 cd app
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-APP_TOKEN=test .venv/bin/uvicorn main:app --reload --port 8090
+APP_TOKEN=test .venv/bin/uvicorn main:app --reload --port 33055
 ```
 
 Die Datenbank liegt dann in `app/data/`. Das Image lokal bauen:

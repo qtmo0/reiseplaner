@@ -46,7 +46,7 @@ Jede Entscheidung mit einem Satz Begründung. Stand: Version 1, November 2026.
 
 - **Gleicher Aufbau wie der Essen-Tracker:** FastAPI, Frontend ohne Build-Schritt in `app/static`, Dockerfile, GitHub-Workflow nach ghcr.io und `docker-compose.yml` sind von dort übernommen, damit beide Apps gleich gebaut, eingespielt und gesichert werden.
 - **SQLite direkt über `sqlite3` statt SQLAlchemy.** Die App hat sechs Tabellen und braucht nie eine andere Datenbank; das spart eine Abhängigkeit. Migrationen laufen über `PRAGMA user_version`.
-- **Port 8090 als Standard.** Der Essen-Tracker nutzt 8080.
+- **Port 33055 als Standard.** Von dir so festgelegt.
 - **Vorschläge laufen als Hintergrund-Job mit Fortschrittsanzeige.** Claude plus eine Nominatim-Anfrage pro Sekunde und Ort dauern bis zu einer Minute, zu lang für eine einzelne Anfrage.
 - **Service Worker hält App, zuletzt geladene Reisen und gesehene Kartenkacheln vor (höchstens 1.500 Kacheln).** Das erfüllt „bei schlechtem Netz lesbar“, ohne Kacheln auf Vorrat zu laden, was die OSM-Richtlinie untersagt.
 - **Abfragen an fremde Dienste nennen die App neutral („Reiseplaner“), eine Kontaktadresse nur über `APP_CONTACT`.** Die Betreiber wünschen eine Kontaktangabe, aber deine Adresse soll nicht ungefragt im Code stehen.
