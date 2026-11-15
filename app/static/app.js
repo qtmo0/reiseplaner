@@ -1022,7 +1022,7 @@ function membersDialog() {
 function movedDialog() {
   const { trip, places } = S.data, flagged = places.filter((p) => p.hours_issue);
   modal("Reise verschoben", `<p>Neu: ${fmtRange(trip.start_date, trip.end_date)}. Alle geplanten Tage sind mitgezogen.</p>
-    ${flagged.length ? `<p class="warn"><b>${flagged.length === 1 ? "Ein Ort braucht" : `${flagged.length} Orte brauchen`} einen Blick:</b> An ihrem neuen Wochentag sind sie laut OpenStreetMap geschlossen.</p>
+    ${flagged.length ? `<p class="warn"><b>${flagged.length === 1 ? "Ein Ort braucht" : `${flagged.length} Orte brauchen`} einen Blick:</b> ${flagged.length === 1 ? "An seinem neuen Wochentag ist er" : "An ihrem neuen Wochentag sind sie"} laut OpenStreetMap geschlossen.</p>
       <ul class="places">${flagged.map((p) => `<li class="place"><div class="row"><button class="open" data-goto="${p.id}"><span class="badge kind-${p.kind}">${stopNumber(p)}</span>
         <span class="txt"><b>${esc(p.name)}</b><small>Tag ${p.day}, ${fmtDay(dayDate(trip, p.day))} · <span class="flag">${esc(p.hours_issue)}</span></small></span></button></div></li>`).join("")}</ul>
       <p class="muted small">Die Orte bleiben markiert, bis sie an einem passenden Tag liegen. Öffnungszeiten in OpenStreetMap können veraltet sein.</p>`

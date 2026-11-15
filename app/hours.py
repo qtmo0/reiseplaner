@@ -7,15 +7,28 @@ _DAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
 _DAY = r"(?:Mo|Tu|We|Th|Fr|Sa|Su|PH|SH)"
 _RULE = re.compile(rf"({_DAY}(?:\s*[-,]\s*{_DAY})*)?\s*:?\s*(.*)")
 _TIME = re.compile(r"(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})")
+_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+_MONTH = "(?:" + "|".join(_MONTHS) + ")"
+_SEASON = re.compile(rf"({_MONTH}(?:\s*-\s*{_MONTH})?(?:\s*,\s*{_MONTH}(?:\s*-\s*{_MONTH})?)*)\s*:?\s*(.*)")
 WEEKDAYS = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
 # When a place has to be open to serve a meal (minutes of the day)
 _MEALS = {"breakfast": (7 * 60, 11 * 60, "zum Frühstück"), "lunch": (12 * 60, 14 * 60 + 30, "mittags"),
           "dinner": (18 * 60 + 30, 21 * 60 + 30, "abends")}
 
 
-def week_hours(raw: str) -> list[list[tuple[int, int]]] | None:
-    """Opening intervals in minutes for Monday to Sunday; an empty list is a closed day.
-    None if the text uses syntax this reader doesn't cover (months, holidays only, sunrise, comments)."""
+def _in_season(selector: str, month: int) -> bool:
+    """month (1-12) inside a selector like 'Oct-Apr' or 'May-Sep,Dec'."""
+    for part in re.split(r"\s*,\s*", selector):
+        ends = re.split(r"\s*-\s*", part)
+        a, b = _MONTHS.index(ends[0]) + 1, _MONTHS.index(ends[-1]) + 1
+        if (a <= month <= b) if a <= b else (month >= a or month <= b):
+            return True
+    return False
+
+
+def week_hours(raw: str, month: int) -> list[list[tuple[int, int]]] | None:
+    """Opening intervals in minutes for Monday to Sunday in the given month; an empty list is a closed day.
+    None if the text uses syntax this reader doesn't cover (dates, holidays only, sunrise, comments)."""
     raw = raw.strip()
     if raw == "24/7":
         return [[(0, 1440)] for _ in range(7)]
@@ -24,6 +37,11 @@ def week_hours(raw: str) -> list[list[tuple[int, int]]] | None:
         rule = rule.strip()
         if not rule:
             continue
+        season = _SEASON.fullmatch(rule)
+        if season:  # a rule for part of the year, e.g. "Oct-Apr: Tu-Su 10:00-17:30"
+            if not _in_season(season[1], month):
+                continue
+            rule = season[2]
         days_part, rest = _RULE.fullmatch(rule).groups()
         days = list(range(7))
         if days_part:
@@ -56,9 +74,10 @@ def week_hours(raw: str) -> list[list[tuple[int, int]]] | None:
     return [day or [] for day in week]
 
 
-def issue(raw: str, weekday: int, meals: list[str]) -> str:
-    """Why a visit on that weekday (0 = Monday) looks doubtful, as German text; '' if fine or unknown."""
-    week = week_hours(raw) if raw else None
+def issue(raw: str, day, meals: list[str]) -> str:
+    """Why a visit on that date looks doubtful, as German text; '' if fine or unknown."""
+    weekday = day.weekday()
+    week = week_hours(raw, day.month) if raw else None
     if week is None:
         return ""
     spans = week[weekday]
