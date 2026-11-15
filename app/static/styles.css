@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light; --scroll: #cfcdc5; --scroll-hover: #a9a69c;
   --bg: #f6f5f1; --surface: #ffffff; --surface2: #efeee9; --text: #1c1b19; --muted: #6a6862; --line: #e2e0d9;
   --accent: #0f766e; --accent-ink: #ffffff; --accent-soft: #dff1ee; --danger: #b42318; --warn-bg: #fdf3d7; --warn-ink: #6b4d00;
   --route: #0f766e; --route-case: #ffffff; --transit: #1d4ed8; --scenic: #15803d; --shadow: 0 6px 24px rgba(20, 20, 15, .14);
@@ -6,6 +7,7 @@
   --radius: 14px;
 }
 [data-theme="dark"] {
+  color-scheme: dark; --scroll: #46463f; --scroll-hover: #64645b;
   --bg: #141413; --surface: #1e1e1c; --surface2: #2a2a27; --text: #ecebe6; --muted: #a3a199; --line: #35352f;
   --accent: #35c9b6; --accent-ink: #04211d; --accent-soft: #173833; --danger: #ff8a7a; --warn-bg: #3a2f10; --warn-ink: #f2d37a;
   --route: #35c9b6; --route-case: #0c2623; --transit: #7aa7ff; --scenic: #6fcf7f; --shadow: 0 6px 24px rgba(0, 0, 0, .5);
@@ -292,10 +294,9 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 }
 
 /* Scrollbars: thin and quiet, visible only as a soft thumb that darkens on hover */
-* { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--muted) 45%, transparent) transparent; }
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: color-mix(in srgb, var(--muted) 40%, transparent); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--muted) 75%, transparent); border: 3px solid transparent; background-clip: padding-box; }
-::-webkit-scrollbar-corner { background: transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll); border-radius: 8px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-hover); border: 3px solid transparent; background-clip: padding-box; }
 .chips { scrollbar-width: none; }
