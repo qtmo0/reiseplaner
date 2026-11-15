@@ -47,6 +47,14 @@ Jede Entscheidung mit einem Satz Begründung. Stand: Version 1, November 2026.
 - **„Tage umplanen“ verschiebt nur vorhandene Orte und lässt sich rückgängig machen.** Claude fügt nichts hinzu und entfernt nichts; der Stand davor wird gespeichert, bis jemand „Behalten“ oder „Rückgängig“ wählt.
 - **Die Übergabe der ganzen Tagesroute bleibt ein Fußweg.** Apple Karten und Google Maps planen Öffis nicht über mehrere Stopps; ein Öffi-Abschnitt wird deshalb einzeln übergeben.
 
+## Verschieben und Öffnungszeiten
+
+- **Der Plan hängt an Tagesnummern, nicht an Kalenderdaten.** Ein neues Startdatum verschiebt deshalb alles, ohne dass ein Ort angefasst wird; im Dialog wandert das Enddatum mit, damit die Länge gleich bleibt.
+- **Öffnungszeiten werden geprüft und markiert, nicht automatisch umgeplant.** Die App erkennt aus den OSM-Angaben geschlossene Wochentage (auch saisonale Regeln wie „Oct-Apr“) und Essensorte, die zur geplanten Mahlzeit nicht offen haben. Die Entscheidung, wohin der Ort wandert, bleibt bei euch, weil die Angaben veraltet sein können.
+- **Die Prüfung läuft immer, nicht nur beim Verschieben.** So fallen auch Orte auf, die Claude oder ihr von vornherein auf einen Ruhetag gelegt habt.
+- **Was die App nicht lesen kann, markiert sie nicht.** Feiertage, einzelne Kalendertage, „sunrise-sunset“ und Orte ohne Angabe gelten als unbekannt, damit keine falschen Warnungen entstehen.
+- **Richtungspfeile nur auf Abschnitten, die auf dem Bildschirm mindestens 70 Pixel lang sind,** höchstens vier je Abschnitt und nur in der Tagesansicht. Bei dicht liegenden Stopps zeigen schon die Nummern die Richtung.
+
 ## Konten und Zusammenarbeit
 
 - **Konto = Name + Passwort, Einladung = Link je Reise.** Für eine Freundesgruppe reicht das; kein E-Mail-Versand, kein fremder Login-Dienst. Wer den Link öffnet, legt ein Konto an und ist in der Reise.
