@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 import ai
 import db
 import geo
+import hours
 
 log = logging.getLogger("reiseplaner")
 APP_TOKEN = os.environ.get("APP_TOKEN", "")
@@ -283,9 +284,13 @@ def trip_payload(trip_id: int, user: dict) -> dict:
     votes: dict[int, list[int]] = {}
     for v in db.q("SELECT v.place_id, v.user_id FROM votes v JOIN places p ON p.id=v.place_id WHERE p.trip_id=?", (trip_id,)):
         votes.setdefault(v["place_id"], []).append(v["user_id"])
+    start = date.fromisoformat(trip["start_date"])
     for p in places:
         p["meals"] = json.loads(p["meals"])
         p["info"] = json.loads(p["info"])
+        # Planned for a weekday on which OSM says the place is closed (or closed at its meal times)
+        planned = p["day"] and p["status"] != "rejected" and p["id"] != trip["hotel_id"]
+        p["hours_issue"] = hours.issue(p["opening_hours"], (start + timedelta(p["day"] - 1)).weekday(), p["meals"]) if planned else ""
         p["votes"] = votes.get(p["id"], [])
         del p["wiki_hint"], p["walk_via"]
     trip["bbox"] = json.loads(trip["bbox"])

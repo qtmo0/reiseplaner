@@ -223,6 +223,13 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .route-line { stroke: var(--route); }
 .route-case { stroke: var(--route-case); }
 .route-transit { stroke: var(--transit); }
+/* Direction arrows: a chevron in the casing colour with an outline in the line's colour, so it stands out on the line */
+.arrow { display: block; width: 14px; height: 14px; fill: #fff; stroke: var(--route); stroke-width: 1.5; stroke-linejoin: round; }
+.arrow.transit { stroke: var(--transit); }
+.arrow.scenic { stroke: var(--scenic); }
+.flag { color: var(--warn-ink); background: var(--warn-bg); border-radius: 6px; padding: 0 5px; }
+.flag-dot { width: 8px; height: 8px; border-radius: 50%; background: #d97706; margin-left: 2px; }
+.pin.flagged { box-shadow: 0 0 0 3px #f59e0b, 0 2px 6px rgba(0, 0, 0, .35); }
 .route-scenic { stroke: var(--scenic); }
 .pin svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .pin.hotel { border-radius: 9px; }

@@ -1,5 +1,5 @@
 // Offline support: app shell, the trips already opened, and the map tiles already seen stay readable without network.
-const SHELL = "rp-shell-v2";
+const SHELL = "rp-shell-v3";
 const DATA = "rp-data-v1";
 const TILES = "rp-tiles-v1";
 const MAX_TILES = 1500;

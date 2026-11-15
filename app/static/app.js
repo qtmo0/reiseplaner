@@ -44,7 +44,7 @@ const S = {
   showRejected: false,
   offline: false,
 };
-let map = null, mapLayer = null, meMarker = null, pollTimer = null, dragging = false;
+let map = null, mapLayer = null, arrowLayer = null, arrowLegs = [], meMarker = null, pollTimer = null, dragging = false;
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -384,11 +384,13 @@ async function openTrip(id) {
     attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Routen: <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS</a>',
   }).addTo(map);
   mapLayer = L.layerGroup().addTo(map);
+  arrowLayer = L.layerGroup().addTo(map);
+  map.on("zoomend", drawArrows);
   new ResizeObserver(() => map?.invalidateSize()).observe($("#map"));
   map.on("click", () => { if (S.sel) select(null); });
 
   setupSheet($("#panel"), "half");
-  setupSheet($("#detail"), "half", () => select(null));
+  setupSheet($("#detail"), "half"); // same three positions as the list; it closes with its button or a tap on the map
   $("#locate").onclick = locateMe;
   $("#trip").addEventListener("click", onTripClick);
   $("#panel-body").addEventListener("pointerdown", startSort);
@@ -445,7 +447,7 @@ function renderPanel() {
     <div class="chips days" role="tablist">
       <button class="chip ${S.view === "all" ? "on" : ""}" data-view="all">Alle</button>
       ${Array.from({ length: trip.days }, (_, i) => { const w = S.data.weather.days[i + 1]; return `<button class="chip ${S.view === i + 1 ? "on" : ""}" data-view="${i + 1}">
-        <b>Tag ${i + 1}</b> ${fmtDay(dayDate(trip, i + 1))}${w ? ` ${weatherIcon(w.code)}${w.tmax}°` : ""}</button>`; }).join("")}
+        <b>Tag ${i + 1}</b> ${fmtDay(dayDate(trip, i + 1))}${w ? ` ${weatherIcon(w.code)}${w.tmax}°` : ""}${places.some((p) => p.day === i + 1 && p.hours_issue) ? '<i class="flag-dot" title="Öffnungszeiten prüfen"></i>' : ""}</button>`; }).join("")}
       <button class="chip ${S.view === "ideas" ? "on" : ""}" data-view="ideas">Ideen</button>
     </div>`;
 
@@ -555,7 +557,7 @@ function placeRow(p, leg, legIndex) {
     ${legRow(leg, legIndex)}
     <div class="row"><button class="open" data-act="open">
       <span class="badge kind-${p.kind}">${n}</span>
-      <span class="txt"><b>${esc(p.name)}</b><small>${tags.join(" · ")}${p.status === "suggested" ? " · Vorschlag" : ""}${p.votes.length ? ` · 👍 ${p.votes.length}` : ""}</small></span>
+      <span class="txt"><b>${esc(p.name)}</b><small>${tags.join(" · ")}${p.status === "suggested" ? " · Vorschlag" : ""}${p.votes.length ? ` · 👍 ${p.votes.length}` : ""}${p.hours_issue ? ` · <span class="flag">${esc(p.hours_issue)}</span>` : ""}</small></span>
     </button>${side}</div></li>`;
 }
 
@@ -585,6 +587,7 @@ function renderDetail() {
   if (p.id === trip.hotel_id) sections.push('<div class="decide"><button class="btn" data-act="unset-hotel">Nicht mehr als Unterkunft</button></div>');
   else if (p.kind === "lodging") sections.push('<div class="decide"><button class="btn" data-act="set-hotel">Als Unterkunft der Reise festlegen</button></div>');
   if (p.votes.length) sections.push(`<p class="muted small">Dafür: ${p.votes.map((id) => esc(S.data.members.find((m) => m.id === id)?.name || "?")).join(", ")}</p>`);
+  if (p.hours_issue) sections.push(`<p class="warn"><b>Bitte prüfen:</b> Tag ${p.day} ist ein ${WEEKDAYS[dayDate(trip, p.day).getDay() === 0 ? 6 : dayDate(trip, p.day).getDay() - 1]}, und laut OpenStreetMap ist dieser Ort ${esc(p.hours_issue.replace(/^\S+ /, ""))}. Die Angabe kann veraltet sein. Verschieb den Ort auf einen anderen Tag oder sieh auf seiner Website nach.</p>`);
   if (!p.verified) sections.push('<p class="warn">Dieser Ort wurde in OpenStreetMap nicht gefunden. Die Position ist ungefähr; prüft vor dem Losgehen, ob es ihn noch gibt.</p>');
   if (info.image) sections.push(`<a class="photo" href="${esc(info.image_page || info.wiki_url)}" target="_blank" rel="noopener"><img src="${esc(info.image)}" alt="" crossorigin="anonymous" loading="lazy"><span>Bild: Wikimedia Commons</span></a>`);
   if (p.reason) sections.push(p.source === "ai" ? `<h3>Warum hierhin?</h3><p>${esc(p.reason)}</p><p class="muted small">Einschätzung von Claude, nicht belegt.</p>` : `<p>${esc(p.reason)}</p>`);
@@ -638,21 +641,33 @@ function select(id) {
 function renderMap(fit) {
   if (!map) return;
   mapLayer.clearLayers();
+  arrowLegs = [];
   const { trip, routes } = S.data, bounds = [];
   const days = S.view === "all" ? Array.from({ length: trip.days }, (_, i) => i + 1) : typeof S.view === "number" ? [S.view] : [];
   for (const d of days) {
     if (!routes[d]) continue;
-    const dim = S.view === "all" ? 0.55 : 1;
-    for (const leg of routes[d].legs) {
+    const single = typeof S.view === "number", legs = routes[d].legs;
+    // With a stop selected, the way to it lights up and the rest of the day steps back.
+    // For the hotel that is the first leg out and the last leg home.
+    const pts = dayPoints(d), hot = new Set();
+    if (single && S.sel) pts.forEach((p, i) => { if (p.id === S.sel) hot.add(i === 0 ? 0 : i - 1); });
+    const draw = (leg, strong) => {
+      const dim = !single ? 0.55 : hot.size && !strong ? 0.3 : 1;
       for (const seg of leg.segs) {
         const line = seg.pts || decodePolyline(seg.g, seg.p);
         // Rides are dashed, suggested strolls green, a straight line stands for a connection without known path
         const cls = seg.m === "t" ? "route-transit" : leg.scenic ? "route-scenic" : "route-line";
-        L.polyline(line, { className: "route-case", weight: 8, opacity: dim, interactive: false }).addTo(mapLayer);
-        L.polyline(line, { className: cls, weight: 4.5, opacity: dim, dashArray: seg.pts ? "2 10" : seg.m === "t" ? "10 8" : null, interactive: false }).addTo(mapLayer);
-        if (typeof S.view === "number") bounds.push(...line);
+        L.polyline(line, { className: "route-case", weight: strong ? 10 : 8, opacity: dim, interactive: false }).addTo(mapLayer);
+        L.polyline(line, { className: cls, weight: strong ? 6 : 4.5, opacity: dim, dashArray: seg.pts ? "2 10" : seg.m === "t" ? "10 8" : null, interactive: false }).addTo(mapLayer);
+        if (single) bounds.push(...line);
       }
-    }
+      if (single && (strong || !hot.size)) {
+        arrowLegs.push({ line: leg.segs.flatMap((seg) => seg.pts || decodePolyline(seg.g, seg.p)),
+          cls: leg.mode === "transit" ? "transit" : leg.scenic ? "scenic" : "" });
+      }
+    };
+    legs.forEach((leg, i) => { if (!hot.has(i)) draw(leg, false); });
+    legs.forEach((leg, i) => { if (hot.has(i)) draw(leg, true); }); // on top
   }
   const h = hotel();
   if (h && S.view !== "ideas") {
@@ -664,15 +679,41 @@ function renderMap(fit) {
     const n = stopNumber(p);
     const icon = L.divIcon({
       className: "", iconSize: [34, 34], iconAnchor: [17, 17],
-      html: `<div class="pin kind-${p.kind} ${p.status} ${S.sel === p.id ? "sel" : ""} ${n === "" ? "nonum" : ""}">${n}</div>`,
+      html: `<div class="pin kind-${p.kind} ${p.status} ${S.sel === p.id ? "sel" : ""} ${n === "" ? "nonum" : ""} ${p.hours_issue ? "flagged" : ""}">${n}</div>`,
     });
     L.marker([p.lat, p.lon], { icon, title: p.name, zIndexOffset: S.sel === p.id ? 1000 : 0 }).on("click", () => select(p.id)).addTo(mapLayer);
     bounds.push([p.lat, p.lon]);
   }
+  drawArrows();
   if (!fit) return;
   const pad = isDesktop() ? [50, 50] : [40, Math.min($("#panel").sheet.visible(), innerHeight * 0.55) + 30];
   if (bounds.length) map.fitBounds(bounds, { paddingTopLeft: [40, isDesktop() ? 50 : 110], paddingBottomRight: pad, maxZoom: 16 });
   else map.setView([trip.lat, trip.lon], 13);
+}
+
+// Small direction arrows on the day's route: one in the middle of each leg that is long enough on screen to
+// need it, a few more on very long legs. Placed in screen pixels, so they are redrawn after every zoom.
+function drawArrows() {
+  if (!map) return;
+  arrowLayer.clearLayers();
+  for (const { line, cls } of arrowLegs) {
+    const pts = line.map((p) => map.latLngToLayerPoint(p));
+    const lens = pts.slice(1).map((p, i) => p.distanceTo(pts[i]));
+    const total = lens.reduce((a, b) => a + b, 0);
+    if (total < 70) continue; // the two markers almost touch: the numbers already tell the direction
+    const count = Math.min(4, Math.max(1, Math.round(total / 280)));
+    for (let k = 0; k < count; k++) {
+      let rest = (total * (k + 0.5)) / count, i = 0;
+      while (i < lens.length - 1 && rest > lens[i]) rest -= lens[i++];
+      // Direction over a short stretch around the spot, so a tiny kink in the path doesn't turn the arrow
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 2)];
+      const deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+      const t = lens[i] ? rest / lens[i] : 0;
+      const at = map.layerPointToLatLng([pts[i].x + (pts[i + 1].x - pts[i].x) * t, pts[i].y + (pts[i + 1].y - pts[i].y) * t]);
+      L.marker(at, { interactive: false, keyboard: false, zIndexOffset: -500, icon: L.divIcon({ className: "", iconSize: [16, 16], iconAnchor: [8, 8],
+        html: `<svg class="arrow ${cls}" viewBox="0 0 16 16" style="transform:rotate(${deg.toFixed(0)}deg)"><path d="M3.500 2.500L13.500 8 3.500 13.500 6 8z"/></svg>` }) }).addTo(arrowLayer);
+    }
+  }
 }
 
 function locateMe() {
@@ -688,7 +729,7 @@ function locateMe() {
 
 // ----- Bottom sheet (phones). On desktop the same elements are plain columns. -----
 
-function setupSheet(el, initial, onDismiss) {
+function setupSheet(el, initial) {
   let snap = initial;
   const height = () => el.offsetHeight;
   const offsets = () => ({ full: 0, half: Math.round(height() * 0.5), peek: height() - PEEK });
@@ -713,7 +754,7 @@ function setupSheet(el, initial, onDismiss) {
     zone.setPointerCapture(e.pointerId);
     const move = (ev) => {
       moved = ev.clientY - startY;
-      put(Math.min(Math.max(0, startOff + moved), height() - (onDismiss ? 0 : PEEK)), false);
+      put(Math.min(Math.max(0, startOff + moved), height() - PEEK), false);
     };
     const up = () => {
       zone.removeEventListener("pointermove", move);
@@ -721,11 +762,10 @@ function setupSheet(el, initial, onDismiss) {
       zone.removeEventListener("pointercancel", up);
       const o = offsets(), y = startOff + moved;
       if (Math.abs(moved) < 6) snap = snap === "full" ? "half" : "full"; // a tap toggles
-      else if (onDismiss && y > o.half + 80) { put(o[snap], false); return onDismiss(); }
       else {
         // Nearest snap point, nudged in the direction of the swipe
         const target = y + Math.sign(moved) * 60;
-        snap = Object.keys(o).filter((k) => !onDismiss || k !== "peek").reduce((a, b) => (Math.abs(o[a] - target) < Math.abs(o[b] - target) ? a : b));
+        snap = Object.keys(o).reduce((a, b) => (Math.abs(o[a] - target) < Math.abs(o[b] - target) ? a : b));
       }
       put(o[snap], true);
     };
@@ -978,6 +1018,26 @@ function membersDialog() {
   });
 }
 
+// After new dates: which stops fall on a weekday when they are closed
+function movedDialog() {
+  const { trip, places } = S.data, flagged = places.filter((p) => p.hours_issue);
+  modal("Reise verschoben", `<p>Neu: ${fmtRange(trip.start_date, trip.end_date)}. Alle geplanten Tage sind mitgezogen.</p>
+    ${flagged.length ? `<p class="warn"><b>${flagged.length === 1 ? "Ein Ort braucht" : `${flagged.length} Orte brauchen`} einen Blick:</b> An ihrem neuen Wochentag sind sie laut OpenStreetMap geschlossen.</p>
+      <ul class="places">${flagged.map((p) => `<li class="place"><div class="row"><button class="open" data-goto="${p.id}"><span class="badge kind-${p.kind}">${stopNumber(p)}</span>
+        <span class="txt"><b>${esc(p.name)}</b><small>Tag ${p.day}, ${fmtDay(dayDate(trip, p.day))} · <span class="flag">${esc(p.hours_issue)}</span></small></span></button></div></li>`).join("")}</ul>
+      <p class="muted small">Die Orte bleiben markiert, bis sie an einem passenden Tag liegen. Öffnungszeiten in OpenStreetMap können veraltet sein.</p>`
+      : '<p class="muted">Soweit Öffnungszeiten bekannt sind, passen alle Orte zu ihrem neuen Wochentag. Feiertage und Orte ohne Angabe sind nicht geprüft.</p>'}`, (el, close) => {
+    el.onclick = (e) => {
+      const id = +e.target.closest("[data-goto]")?.dataset.goto;
+      if (!id) return;
+      close();
+      S.view = place(id).day;
+      select(id);
+      renderMap(true);
+    };
+  });
+}
+
 function settingsDialog() {
   const trip = S.data.trip, owner = trip.created_by === S.me.id;
   modal("Reise bearbeiten", `<form id="trip-form">
@@ -988,11 +1048,23 @@ function settingsDialog() {
       <div class="hotel-set"><span>${hotel() ? esc(hotel().name) : "Noch keine festgelegt"}</span><button type="button" class="link" id="pick-hotel">${hotel() ? "Ändern" : "Festlegen"}</button></div>
       <label>Unterwegs</label>
       <div class="seg" id="mode-seg">${Object.entries(MODES).map(([k, l]) => `<button type="button" data-mode="${k}" class="${trip.mode === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      <p class="muted small">Bestimmt, wie die Wege zwischen den Stopps berechnet und an die Karten-App übergeben werden. Wird die Reise kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
+      <p class="muted small">„Unterwegs“ bestimmt, wie die Wege zwischen den Stopps berechnet und an die Karten-App übergeben werden.</p>
+      <p class="muted small"><b>Reise verschieben:</b> Ändere „Von“, dann wandert „Bis“ mit, und alle geplanten Tage ziehen auf die neuen Daten um. Orte, die an ihrem neuen Wochentag laut Öffnungszeiten geschlossen sind, werden markiert. Wird die Reise kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
       <button class="btn primary" type="submit">Speichern</button></form>
     <button class="link danger" id="leave">${owner ? "Reise löschen" : "Reise verlassen"}</button>`, (el, close) => {
     let mode = trip.mode;
     $("#pick-hotel", el).onclick = () => { close(); hotelDialog(); };
+    // Moving the start keeps the length of the trip: the end moves by the same number of days
+    const form = $("#trip-form", el), day = 864e5;
+    let lastStart = trip.start_date;
+    form.start.onchange = () => {
+      if (!form.start.value) return;
+      const shift = Math.round((new Date(form.start.value) - new Date(lastStart)) / day);
+      const end = new Date(form.end.value);
+      end.setUTCDate(end.getUTCDate() + shift);
+      form.end.value = end.toISOString().slice(0, 10);
+      lastStart = form.start.value;
+    };
     $("#mode-seg", el).onclick = (e) => {
       if (!e.target.dataset.mode) return;
       mode = e.target.dataset.mode;
@@ -1002,8 +1074,10 @@ function settingsDialog() {
       e.preventDefault();
       const f = e.target;
       busy($("button[type=submit]", f), async () => {
+        const moved = f.start.value !== trip.start_date || f.end.value !== trip.end_date;
         update(await api("/trips/" + trip.id, { method: "PATCH", body: { title: f.title.value.trim(), start_date: f.start.value, end_date: f.end.value, mode } }), true);
         close();
+        if (moved) movedDialog();
       });
     };
     $("#leave", el).onclick = (e) => {
