@@ -172,7 +172,31 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .leg span { min-width: 0; }
 .leg.transit { color: var(--transit); border-left: 2px dashed var(--transit); }
 .leg.scenic { color: var(--scenic); border-left: 2px solid var(--scenic); }
+.hotel-row .row { display: flex; align-items: center; gap: 4px; }
 .hotel-row .open { min-height: 48px; }
+/* Timetable of a day */
+.timebar { position: relative; overflow: hidden; height: 14px; margin: 6px 0 2px; border-radius: 7px; background: var(--surface2); }
+.timebar i { position: absolute; top: 0; height: 100%; background: var(--k); }
+.timebar i.way { background: var(--muted); opacity: .4; }
+.timebar i.transit { background: var(--transit); opacity: .55; }
+.timebar i.scenic { background: var(--scenic); opacity: .55; }
+.timebar .now { position: absolute; top: 0; bottom: 0; width: 3px; margin-left: -1px; border-radius: 2px; background: var(--text); box-shadow: 0 0 0 2px var(--bg); }
+.ticks { display: flex; justify-content: space-between; color: var(--muted); font-size: .72rem; }
+.clock { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 4px; color: var(--muted); font-size: .86rem; }
+.clock label { display: flex; align-items: center; gap: 8px; margin: 0; font-weight: 400; font-size: inherit; }
+.clock input { width: auto; min-height: 40px; margin: 0; padding: 4px 10px; }
+.time { flex: none; width: 42px; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; text-align: right; padding-right: 4px; }
+.sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -4px 0 6px 94px; font-size: .8rem; }
+.stay { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
+.stay b { min-width: 58px; text-align: center; font-weight: 600; }
+.stay button { width: 40px; height: 36px; border: 0; background: none; font-size: 1.15rem; color: var(--text); }
+.stay button:disabled { opacity: .35; }
+.sub.live { color: var(--text); font-size: .86rem; }
+.btn.small { min-height: 40px; padding: 0 14px; font-size: .9rem; }
+.sub.live .link { min-height: 36px; padding: 4px 0; font-size: .82rem; }
+.place.done .row, .place.done .sub, .hotel-row.done { opacity: .45; }
+.place.here .time, .hotel-row.here .time, .place.coming .time { color: var(--text); font-weight: 700; }
+.place.here .badge, .place.coming .badge { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--k); }
 .hotel-row .badge svg { width: 18px; height: 18px; }
 .hotel-set { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 400; }
 .weather { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 8px; color: var(--muted); font-size: .86rem; }

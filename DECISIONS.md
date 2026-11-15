@@ -55,6 +55,16 @@ Jede Entscheidung mit einem Satz Begründung. Stand: Version 1, November 2026.
 - **Was die App nicht lesen kann, markiert sie nicht.** Feiertage, einzelne Kalendertage, „sunrise-sunset“ und Orte ohne Angabe gelten als unbekannt, damit keine falschen Warnungen entstehen.
 - **Richtungspfeile nur auf Abschnitten, die auf dem Bildschirm mindestens 70 Pixel lang sind,** höchstens vier je Abschnitt und nur in der Tagesansicht. Bei dicht liegenden Stopps zeigen schon die Nummern die Richtung.
 
+## Zeitplan und Live-Ansicht
+
+- **Aufenthaltsdauer je Stopp, Startzeit je Tag; alle Uhrzeiten werden daraus berechnet, nicht gespeichert.** So stimmt der Plan nach jedem Umsortieren von selbst.
+- **Ohne eigene Angabe gilt ein üblicher Wert je Art** (Sehenswürdigkeit 30, Museum 90, Mittagessen 60, Abendessen 90 Minuten), gekennzeichnet als „Vorschlag“. Claude schätzt die Dauer bei neuen Vorschlägen mit und auf Knopfdruck für vorhandene Orte.
+- **Öffi-Abschnitte zählen mit ihrer Fahrtdauer, ohne Wartezeit und ohne Abfahrtszeit.** Die App kennt nur die Verbindung eines typischen Wochentags; ein Abschnitt ohne Fahrplandaten zählt mit 20 Minuten.
+- **Fortschritt per Knopf, nicht per Standort.** Eine Web-App kann den Standort auf dem iPhone nicht im Hintergrund verfolgen; ein Tipp auf „Weiter“ ist verlässlich und gilt für die ganze Gruppe.
+- **Die Ankunft am nächsten Stopp wird aus Abgangszeit und Wegdauer geschätzt.** Einen zweiten Knopf „Angekommen“ gibt es nicht; wer länger bleibt als geplant, schiebt alles Folgende nach hinten.
+- **Wer zu spät kommt, hat bis zur Schließzeit weniger Zeit.** Die Live-Ansicht kürzt den Aufenthalt auf die Schließzeit aus OpenStreetMap und sagt das, statt einen Plan zu zeigen, der nicht mehr aufgeht.
+- **Live gilt nur am Kalendertag des Reisetags nach der Uhr des Geräts.** Unterwegs steht das Handy auf Ortszeit; eine Zeitzonen-Umrechnung wäre nur für Zuschauer zu Hause nötig.
+
 ## Konten und Zusammenarbeit
 
 - **Konto = Name + Passwort, Einladung = Link je Reise.** Für eine Freundesgruppe reicht das; kein E-Mail-Versand, kein fremder Login-Dienst. Wer den Link öffnet, legt ein Konto an und ist in der Reise.

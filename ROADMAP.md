@@ -4,7 +4,6 @@ Was Version 1 bewusst nicht enthält, grob nach Nutzen für die Gruppe sortiert.
 
 ## Als Nächstes
 
-- **Uhrzeiten und Dauer je Stopp (Variante C).** Aus Aufenthaltsdauer und Wegzeit entsteht ein Zeitplan mit Abfahrten; mit den Öffnungszeiten aus OSM kann die App warnen („montags geschlossen“).
 - **Ort per langem Druck auf die Karte hinzufügen** und Orte per Ziehen zwischen Tagen verschieben (bisher über die Auswahl „Tag“ in den Details).
 - **Passwort zurücksetzen und Nutzerverwaltung** für den Admin.
 
@@ -22,7 +21,8 @@ Was Version 1 bewusst nicht enthält, grob nach Nutzen für die Gruppe sortiert.
 - **Kartenausschnitt der Reise gezielt offline speichern.** Die öffentlichen OSM-Kacheln erlauben kein Laden auf Vorrat; dafür bräuchte es einen eigenen Kachel-Server oder einen Anbieter, der es gestattet.
 - **Fotoalbum je Reise**, Fotos den Orten zugeordnet.
 - **„Was ist in der Nähe?“:** offene Cafés oder Restaurants rund um den aktuellen Standort.
-- **Wetter je Stunde am Tagesplan** (kommt sinnvoll mit den Uhrzeiten).
+- **Wetter je Stunde am Zeitplan** und echte Abfahrtszeiten der Öffis am Reisetag.
+- **Ankunft per Standort erkennen**, solange die App offen ist, statt per Knopf.
 - **Wechselnde Unterkünfte** für Rundreisen: ein Hotel je Tag statt je Reise.
 - **Spaziergänge mit eigener Strecke:** mehrere Wegpunkte, auf der Karte von Hand anpassbar.
 

@@ -67,6 +67,7 @@ Die App prüft jeden deiner Orte anschließend in OpenStreetMap. Deshalb:
 - Bei Restaurants, Cafés und Bars: etablierte Häuser, die es seit Jahren gibt. Kurzlebige Trend-Lokale könnten inzwischen geschlossen sein.
 - lat/lon: so genau, wie du sie kennst.
 - wikipedia_de: der exakte Titel des deutschen Wikipedia-Artikels über genau diesen Ort, wenn du ihn sicher kennst, sonst "".
+- stay_min: wie viele Minuten eine Gruppe dort sinnvoll verbringt, realistisch für diesen Ort: ein Platz oder Aussichtspunkt 15 bis 30, eine Kirche 20 bis 40, ein großes Museum 90 bis 150, Mittagessen 60, Abendessen 90. Die Summe aus Aufenthalten und Wegen soll einen Tag von etwa 9 bis 19 Uhr füllen, ohne ihn zu überladen.
 - reason: ein bis zwei Sätze auf Deutsch, warum sich der Ort für diese Gruppe lohnt. Keine Jahreszahlen, Preise oder Öffnungszeiten; die Fakten zeigt die App aus Wikipedia und OpenStreetMap.
 
 Tagesplan:
@@ -105,9 +106,10 @@ SUGGEST_SCHEMA = {
                     "reason": {"type": "string"},
                     "walk_to_next": {"type": "string"},
                     "walk_via": {"type": "string"},
+                    "stay_min": {"type": "integer"},
                 },
                 "required": ["name", "kind", "meals", "day", "order", "lat", "lon", "wikipedia_de", "reason",
-                             "walk_to_next", "walk_via"],
+                             "walk_to_next", "walk_via", "stay_min"],
                 "additionalProperties": False,
             },
         }
@@ -180,6 +182,37 @@ def replan(destination: str, days: int, weather: list[str], places: list[dict]) 
         lines += [f"- id {p['id']}: {p['name']} ({p['kind']}{', ' + ', '.join(json.loads(p['meals'])) if p['meals'] != '[]' else ''})"
                   for p in places if p["day"] == day]
     return _ask_json(REPLAN_SYSTEM, "\n".join(lines), REPLAN_SCHEMA, EFFORT, "Das Umplanen")
+
+
+STAYS_SYSTEM = """Du schätzt für eine Reise-App, wie viele Minuten eine Freundesgruppe an jedem Ort sinnvoll verbringt.
+
+Richte dich nach dem konkreten Ort, nicht nur nach seiner Art: Ein Platz oder Aussichtspunkt braucht 15 bis 30 Minuten, eine Kirche 20 bis 40, ein kleines Museum 45 bis 60, ein großes 90 bis 150, ein Markt 30 bis 60, Frühstück oder Café 30 bis 45, Mittagessen 60, Abendessen 90, eine Bar 60. Kennst du den Ort nicht, nimm einen üblichen Wert für seine Art.
+
+Gib jeden Ort genau einmal zurück, mit seiner id und den Minuten, auf 5 gerundet."""
+
+STAYS_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "stays": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"id": {"type": "integer"}, "minutes": {"type": "integer"}},
+                "required": ["id", "minutes"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["stays"],
+    "additionalProperties": False,
+}
+
+
+def stays(destination: str, places: list[dict]) -> list[dict]:
+    """places: id, name, kind, meals (JSON text). Returns [{id, minutes}]."""
+    lines = [f"Reiseziel: {destination}", "Orte:"]
+    lines += [f"- id {p['id']}: {p['name']} ({p['kind']}{', ' + ', '.join(json.loads(p['meals'])) if p['meals'] != '[]' else ''})" for p in places]
+    return _ask_json(STAYS_SYSTEM, "\n".join(lines), STAYS_SCHEMA, "low", "Die Schätzung")["stays"]
 
 
 INFO_SYSTEM = """Du schreibst kurze Ortsinfos für eine Reise-App, auf Deutsch, auch wenn der Quelltext englisch ist.

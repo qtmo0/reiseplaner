@@ -44,6 +44,7 @@ const S = {
   showRejected: false,
   offline: false,
 };
+let clockTimer = null;
 let map = null, mapLayer = null, arrowLayer = null, arrowLegs = [], meMarker = null, pollTimer = null, dragging = false;
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -172,6 +173,82 @@ function dayPoints(day) {
 }
 const weatherIcon = (code) => (code <= 1 ? ICON.sun : code <= 48 ? ICON.cloud : ICON.rain);
 const dayStops = (day) => active().filter((p) => p.day === day);
+
+// ---------- Timetable of a day ----------
+
+// Minutes at a stop when nobody has set them: by kind, meals a little longer
+const STAY = { sight: 30, museum: 90, nature: 45, restaurant: 75, cafe: 30, bar: 60, shop: 30, activity: 90, lodging: 0, other: 30 };
+const stayOf = (p) => p.stay_min ?? (p.meals.includes("dinner") ? 90 : p.meals.includes("lunch") ? 60 : STAY[p.kind]);
+const hm = (min) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(Math.round(min) % 60).padStart(2, "0")}`;
+const toMin = (text) => +text.slice(0, 2) * 60 + +text.slice(3, 5);
+const isoLocal = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const isToday = (day) => isoLocal(dayDate(S.data.trip, day)) === isoLocal(new Date());
+
+// What the opening hours mean for a visit from arr to dep (minutes of the day): a hint, and whether it is a problem
+function hoursHint(p, arr, dep) {
+  if (!p.open || !p.open.length) return null;
+  const span = p.open.find(([, to]) => to > arr);
+  if (!span) return { text: `dann schon geschlossen (bis ${hm(p.open[p.open.length - 1][1])})`, warn: true, close: null };
+  if (arr < span[0]) return { text: `öffnet ${hm(span[0])}`, warn: dep <= span[0], close: span[1] };
+  if (dep > span[1]) return { text: `schließt ${hm(span[1])}`, warn: true, close: span[1] };
+  return dep > span[1] - 45 ? { text: `schließt ${hm(span[1])}`, warn: false, close: span[1] } : { close: span[1] };
+}
+
+// Clock times for every point of a day. On the day itself the times follow the group's real progress:
+// live.passed points are behind them, they left the last one at live.left_at, and overstaying pushes the rest back.
+function schedule(day) {
+  const trip = S.data.trip, pts = dayPoints(day), legs = S.data.routes[day]?.legs || [];
+  if (!pts.length) return null;
+  const start = toMin(trip.day_starts[day] || "09:00");
+  const rows = [];
+  let t = start;
+  pts.forEach((p, i) => {
+    const stay = p.id === trip.hotel_id ? 0 : stayOf(p);
+    const leg = i < legs.length ? Math.round((legs[i].duration ?? 1200) / 60) : 0; // unknown ride: assume 20 minutes
+    rows.push({ i, p, arr: t, stay, dep: t + stay, leg, plan: t, planStay: stay, state: "" });
+    t += stay + leg;
+  });
+  const out = { rows, start, live: false, at: 0, delay: 0, cuts: [] };
+  if (isToday(day)) {
+    const live = trip.live.date === isoLocal(new Date()) ? trip.live : { passed: 0, left_at: "" };
+    const now = nowMin(), k = Math.min(live.passed, pts.length - 1);
+    out.live = true;
+    out.at = k;
+    rows.forEach((r, i) => { if (i < k) r.state = "done"; });
+    const here = rows[k];
+    if (k > 0 && live.left_at) here.arr = toMin(live.left_at) + rows[k - 1].leg;
+    here.state = now < here.arr ? "coming" : "here";
+    t = here.arr;
+    for (let i = k; i < rows.length; i++) {
+      const r = rows[i];
+      r.arr = t;
+      // A stop ends when it closes: whoever arrives late has less time there
+      const close = hoursHint(r.p, r.arr, r.arr + r.stay)?.close;
+      if (close && r.arr < close && r.arr + r.stay > close) { r.stay = close - r.arr; out.cuts.push(r); }
+      r.dep = r.arr + r.stay;
+      if (i === k && r.state === "here" && now > r.dep) r.dep = now; // still there: everything after waits
+      t = r.dep + r.leg;
+    }
+    const next = rows[here.state === "here" ? Math.min(k + 1, rows.length - 1) : k];
+    out.delay = next.arr - next.plan;
+  }
+  out.end = rows[rows.length - 1].arr;
+  return out;
+}
+
+// The day as one bar: stops in their colour, ways between them grey (rides blue, strolls green), a line for now
+function timeBar(sch, day) {
+  const legs = S.data.routes[day]?.legs || [], total = Math.max(1, sch.end - sch.start);
+  // Every part sits at its clock time, so waiting (a late start, an overlong stop) shows as a gap
+  const part = (from, min, cls, done) => (min > 0 ? `<i class="${cls}" style="left:${(((from - sch.start) / total) * 100).toFixed(2)}%;width:${((min / total) * 100).toFixed(2)}%${done ? ";opacity:.35" : ""}"></i>` : "");
+  const bar = sch.rows.map((r, i) => part(r.arr, r.stay, `kind-${r.p.kind}`, r.state === "done")
+    + (legs[i] && sch.rows[i + 1] ? part(sch.rows[i + 1].arr - r.leg, r.leg, legs[i].mode === "transit" ? "transit" : legs[i].scenic ? "scenic" : "way", sch.live && i < sch.at) : "")).join("");
+  const now = sch.live ? Math.min(100, Math.max(0, ((nowMin() - sch.start) / total) * 100)) : null;
+  return `<div class="timebar">${bar}${now != null ? `<span class="now" style="left:${now.toFixed(1)}%"></span>` : ""}</div>
+    <div class="ticks"><span>${hm(sch.start)}</span><span>${hm((sch.start + sch.end) / 2)}</span><span>${hm(sch.end)}</span></div>`;
+}
+
 const matches = (p) => !S.filters.size || S.filters.has("k:" + p.kind) || p.meals.some((m) => S.filters.has("m:" + m));
 const inView = (p) => S.view === "all" || (S.view === "ideas" ? p.day == null : p.day === S.view);
 const visible = () => active().filter((p) => inView(p) && matches(p));
@@ -348,6 +425,7 @@ function newTripDialog() {
 
 function stopTrip() {
   clearTimeout(pollTimer);
+  clearInterval(clockTimer);
   if (map) { map.remove(); map = null; meMarker = null; }
   S.data = null;
   $("#modal-root").innerHTML = "";
@@ -394,6 +472,14 @@ async function openTrip(id) {
   $("#locate").onclick = locateMe;
   $("#trip").addEventListener("click", onTripClick);
   $("#panel-body").addEventListener("pointerdown", startSort);
+  $("#panel-body").addEventListener("change", (e) => {
+    if (e.target.id !== "day-start" || !e.target.value) return;
+    e.target.blur();
+    busy(null, async () => update(await api("/trips/" + S.data.trip.id, { method: "PATCH", body: { day: S.view, day_start: e.target.value } })));
+  });
+  // On the day itself the timetable moves with the clock
+  clearInterval(clockTimer);
+  clockTimer = setInterval(() => { if (S.data && typeof S.view === "number" && isToday(S.view) && !dragging) renderPanel(); }, 60000);
   renderAll(true);
   schedulePoll();
 }
@@ -493,6 +579,21 @@ function renderPanel() {
     const wet = Math.round(W.usual.wet * 10);
     weather = `<div class="weather">${ICON.cloud}<span>Noch keine Vorhersage (kommt etwa 16 Tage vorher). In den letzten ${W.usual.years} Jahren waren es um diese Zeit ${W.usual.tmin} bis ${W.usual.tmax}°, Regen an ${wet < 1 ? "kaum einem Tag" : `etwa ${wet} von 10 Tagen`}.</span></div>`;
   }
+  // Timetable: only for a whole day in plan order
+  const sch = day && stops.length && !S.filters.size && !S.grouped ? schedule(day) : null;
+  let clock = "";
+  if (sch) {
+    const home = hotel() ? "Zurück an der Unterkunft" : "Am letzten Stopp";
+    clock = timeBar(sch, day) + `<div class="clock"><label>Start <input type="time" id="day-start" value="${hm(sch.start)}" ${S.offline ? "disabled" : ""}></label>
+      <span>${home} gegen ${hm(sch.end)}</span></div>`;
+    if (sch.live && sch.delay >= 10) {
+      clock += `<div class="notice error"><span><b>${sch.delay} min hinter dem Plan.</b>${sch.cuts.map((r) =>
+        ` Für ${esc(r.p.name)} bleiben ${r.stay} statt ${r.planStay} min.`).join("")}</span></div>`;
+    }
+    if (S.ai && job.state !== "running" && !S.offline && active().some((p) => p.stay_min == null)) {
+      clock += '<button class="link" data-act="stays">Aufenthaltszeiten von Claude schätzen lassen</button>';
+    }
+  }
   const actions = `<div class="actions">
       <button class="btn primary" data-act="suggest" ${job.state === "running" ? "disabled" : ""}>${ICON.spark} Vorschläge</button>
       <button class="btn" data-act="add">${ICON.plus} Ort</button>
@@ -514,10 +615,12 @@ function renderPanel() {
     // Leg i runs from point i to point i + 1; with a hotel, point 0 and the last point are the hotel
     const legs = day && route && !S.filters.size ? route.legs : null, h = hotel();
     const off = legs && h && legs.length === list.length + 1 ? 0 : -1;
-    const hotelRow = off === 0 ? `<div class="hotel-row"><button class="open" data-act="open-hotel"><span class="badge kind-lodging">${ICON.bed}</span>
-      <span class="txt"><b>${esc(h.name)}</b><small>Unterkunft</small></span></button></div>` : "";
-    body = hotelRow + `<ul class="places" id="sort-list">${list.map((p, i) => placeRow(p, legs && legs[i + off], i + off)).join("")}</ul>`
-      + (off === 0 ? legRow(legs[legs.length - 1], legs.length - 1) + hotelRow : "");
+    const rows = sch && sch.rows.length === list.length + (off === 0 ? 2 : 0) ? sch.rows : null; // row of point i
+    const hotelRow = (r) => (off === 0 ? `<div class="hotel-row ${r ? r.state : ""}"><div class="row">${r ? `<span class="time">${hm(r.arr)}</span>` : ""}
+      <button class="open" data-act="open-hotel"><span class="badge kind-lodging">${ICON.bed}</span>
+      <span class="txt"><b>${esc(h.name)}</b><small>Unterkunft</small></span></button></div>${r ? liveLine(r, sch) : ""}</div>` : "");
+    body = hotelRow(rows && rows[0]) + `<ul class="places" id="sort-list">${list.map((p, i) => placeRow(p, legs && legs[i + off], i + off, rows && rows[i + off + 1])).join("")}</ul>`
+      + (off === 0 ? legRow(legs[legs.length - 1], legs.length - 1) + hotelRow(rows && rows[rows.length - 1]) : "");
   }
   const rejected = places.filter((p) => p.status === "rejected");
   if (S.view === "all" && rejected.length) {
@@ -525,7 +628,9 @@ function renderPanel() {
     if (S.showRejected) body += `<ul class="places rejected">${rejected.map((p) => placeRow(p)).join("")}</ul>`;
   }
   const scroll = $("#panel-body").scrollTop;
-  $("#panel-body").innerHTML = filterRow + jobBox + replanBox + actions + weather + body;
+  // Don't rebuild the list under a time picker that is open
+  if (document.activeElement?.id === "day-start") return;
+  $("#panel-body").innerHTML = filterRow + jobBox + replanBox + actions + weather + clock + body;
   $("#panel-body").scrollTop = scroll;
 }
 
@@ -545,7 +650,18 @@ function legRow(leg, index) {
   return `<button class="leg ${cls}" data-act="leg" data-leg="${index}">${text}</button>`;
 }
 
-function placeRow(p, leg, legIndex) {
+// Under the row of the point the group is at today: since when, until when, and the button to move on
+function liveLine(r, sch) {
+  if (!sch.live || !["here", "coming"].includes(r.state)) return "";
+  const i = r.i, last = i === sch.rows.length - 1;
+  const text = r.state === "coming" ? `Unterwegs, Ankunft gegen ${hm(r.arr)}`
+    : last ? "Tag geschafft" : i === 0 ? `Geplanter Start ${hm(sch.start)}` : `Seit ${hm(r.arr)} hier · geplant bis ${hm(r.arr + r.stay)}`;
+  return `<div class="sub live"><span>${text}</span>
+    ${!last && r.state === "here" && !S.offline ? `<button class="btn primary small" data-act="live-next">${i === 0 ? "Los geht’s" : "Weiter zum nächsten Stopp"}</button>` : ""}
+    ${i > 0 && !S.offline ? '<button class="link" data-act="live-back">Schritt zurück</button>' : ""}</div>`;
+}
+
+function placeRow(p, leg, legIndex, r) {
   const n = stopNumber(p);
   const tags = [KINDS[p.kind], ...p.meals.map((m) => MEALS[m])];
   if ((S.view === "all" || S.grouped) && p.day) tags.push("Tag " + p.day);
@@ -553,13 +669,22 @@ function placeRow(p, leg, legIndex) {
       <button class="mini no" data-act="reject" aria-label="Vorschlag ablehnen">${ICON.close}</button>`
     : p.status === "rejected" ? `<button class="link" data-act="restore">Zurückholen</button>`
     : sortable() ? `<span class="grip" aria-label="Verschieben">${ICON.grip}</span>` : "";
-  return `<li class="place ${p.status} ${S.sel === p.id ? "sel" : ""}" data-id="${p.id}">
+  let sub = "";
+  if (r) {
+    const hint = hoursHint(p, r.arr, r.arr + r.stay);
+    sub = `<div class="sub"><span class="stay"><button data-act="stay" data-d="-1" aria-label="Kürzer bleiben" ${S.offline ? "disabled" : ""}>−</button>
+      <b>${r.stay} min</b><button data-act="stay" data-d="1" aria-label="Länger bleiben" ${S.offline ? "disabled" : ""}>+</button></span>
+      ${p.stay_min == null ? '<span class="muted">Vorschlag</span>' : ""}${hint?.text ? `<span class="${hint.warn ? "flag" : "muted"}">${hint.text}</span>` : ""}</div>` + liveLine(r, sch_());
+  }
+  return `<li class="place ${p.status} ${S.sel === p.id ? "sel" : ""} ${r ? r.state : ""}" data-id="${p.id}">
     ${legRow(leg, legIndex)}
-    <div class="row"><button class="open" data-act="open">
+    <div class="row">${r ? `<span class="time">${hm(r.arr)}</span>` : ""}<button class="open" data-act="open">
       <span class="badge kind-${p.kind}">${n}</span>
       <span class="txt"><b>${esc(p.name)}</b><small>${tags.join(" · ")}${p.status === "suggested" ? " · Vorschlag" : ""}${p.votes.length ? ` · 👍 ${p.votes.length}` : ""}${p.hours_issue ? ` · <span class="flag">${esc(p.hours_issue)}</span>` : ""}</small></span>
-    </button>${side}</div></li>`;
+    </button>${side}</div>${sub}</li>`;
 }
+// The schedule of the day on screen (rows are built from it, so it always exists when a row has times)
+const sch_ = () => schedule(S.view);
 
 // ----- Detail -----
 
@@ -850,6 +975,16 @@ function onTripClick(e) {
   if (act === "open") select(id);
   else if (act === "open-hotel") select(trip.hotel_id);
   else if (act === "leg") legDialog(+btn.dataset.leg);
+  else if (act === "stays") call(`/trips/${trip.id}/stays`, "POST");
+  else if (act === "stay") {
+    const p = place(id), cur = stayOf(p), step = cur < 30 ? 5 : cur < 120 ? 15 : 30;
+    call("/places/" + id, "PATCH", { stay_min: Math.min(720, Math.max(5, cur + step * +btn.dataset.d)) });
+  } else if (act === "live-next" || act === "live-back") {
+    // Shared with the group: which point of today's route we are at, and when we left the one before
+    const sch = schedule(S.view), to = sch.at + (act === "live-next" ? 1 : -1);
+    const left = act === "live-next" ? hm(nowMin()) : to > 0 ? hm(sch.rows[to].arr - sch.rows[to - 1].leg) : "";
+    call(`/trips/${trip.id}/live`, "PUT", { date: isoLocal(new Date()), passed: to, left_at: left });
+  }
   else if (act === "replan") call(`/trips/${trip.id}/replan`, "POST");
   else if (act === "replan-undo") call(`/trips/${trip.id}/replan/undo`, "POST", null, true);
   else if (act === "replan-keep") call(`/trips/${trip.id}/replan/keep`, "POST");

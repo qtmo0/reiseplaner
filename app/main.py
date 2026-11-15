@@ -276,6 +276,17 @@ def trip_weather(trip: dict) -> dict:
     return out
 
 
+def _open_on(raw: str, day: date) -> list | None:
+    """Opening intervals [from, to] in minutes of the day for that date; None if OSM has none or they can't be read."""
+    if not raw:
+        return None
+    try:
+        week = hours.week_hours(raw, day.month)
+    except Exception:
+        return None
+    return week and [list(span) for span in week[day.weekday()]]
+
+
 def trip_payload(trip_id: int, user: dict) -> dict:
     trip = member_trip(trip_id, user)
     places = db.q("SELECT * FROM places WHERE trip_id=? ORDER BY day IS NULL, day, pos, id", (trip_id,))
@@ -291,11 +302,14 @@ def trip_payload(trip_id: int, user: dict) -> dict:
         # Planned for a weekday on which OSM says the place is closed (or closed at its meal times)
         planned = p["day"] and p["status"] != "rejected" and p["id"] != trip["hotel_id"]
         p["hours_issue"] = hours.issue(p["opening_hours"], start + timedelta(p["day"] - 1), p["meals"]) if planned else ""
+        p["open"] = _open_on(p["opening_hours"], start + timedelta(p["day"] - 1)) if planned else None
         p["votes"] = votes.get(p["id"], [])
         del p["wiki_hint"], p["walk_via"]
     trip["bbox"] = json.loads(trip["bbox"])
     trip["job"] = json.loads(trip["job"])
     trip["replan"] = json.loads(trip["replan"]).get("msg", "")
+    trip["day_starts"] = json.loads(trip["day_starts"])
+    trip["live"] = json.loads(trip["live"])
     return {
         "trip": trip,
         "members": db.q("SELECT u.id, u.name FROM trip_members m JOIN users u ON u.id=m.user_id WHERE m.trip_id=? ORDER BY u.name",
@@ -321,6 +335,14 @@ class TripPatch(BaseModel):
     start_date: str | None = None
     end_date: str | None = None
     mode: str | None = None
+    day: int | None = None           # with day_start: when that day begins, "HH:MM"
+    day_start: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class LiveIn(BaseModel):
+    date: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    passed: int = Field(ge=0, le=200)
+    left_at: str = Field("", pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")
 
 
 @app.get("/api/trips")
@@ -363,6 +385,17 @@ def patch_trip(trip_id: int, body: TripPatch, user: dict = Depends(require_user)
                     (body.title.strip() if body.title else trip["title"], start, end, mode, time.time(), trip_id))
         # Places on days that no longer exist move to the ideas list
         con.execute("UPDATE places SET day=NULL WHERE trip_id=? AND day>?", (trip_id, days))
+        if body.day and body.day_start:
+            starts = {**json.loads(trip["day_starts"]), str(body.day): body.day_start}
+            con.execute("UPDATE trips SET day_starts=? WHERE id=?", (json.dumps(starts), trip_id))
+    return trip_payload(trip_id, user)
+
+
+@app.put("/api/trips/{trip_id}/live")
+def set_live(trip_id: int, body: LiveIn, user: dict = Depends(require_user)):
+    """Progress on the day itself, shared by the group: how many points of the route are behind them."""
+    member_trip(trip_id, user)
+    db.run("UPDATE trips SET live=?, updated_at=? WHERE id=?", (json.dumps(body.model_dump()), time.time(), trip_id))
     return trip_payload(trip_id, user)
 
 
@@ -421,6 +454,7 @@ class PlacePatch(BaseModel):
     status: str | None = None
     note: str | None = Field(None, max_length=2000)
     leg_mode: str | None = None  # way to the next stop: auto|walk|transit
+    stay_min: int | None = Field(None, ge=5, le=720)  # minutes planned at this stop
 
 
 class OrderIn(BaseModel):
@@ -438,13 +472,13 @@ def insert_place(trip_id: int, user_id: int | None, f: dict) -> int:
         pos = con.execute("SELECT COALESCE(MAX(pos),0)+1 FROM places WHERE trip_id=? AND day IS ?", (trip_id, f.get("day"))).fetchone()[0]
         return con.execute(
             "INSERT INTO places (trip_id, name, kind, meals, lat, lon, status, day, pos, source, reason, verified, osm_ref, address, "
-            "opening_hours, website, phone, wikidata, wikipedia, wiki_hint, leg_mode, walk_label, walk_via, created_by, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "opening_hours, website, phone, wikidata, wikipedia, wiki_hint, leg_mode, walk_label, walk_via, stay_min, created_by, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (trip_id, f["name"][:120], kind, clean_meals(kind, f.get("meals", [])), f["lat"], f["lon"], f.get("status", "accepted"),
              f.get("day"), pos, f.get("source", "manual"), f.get("reason", ""), int(f.get("verified", 0)), f.get("osm_ref", ""),
              f.get("address", ""), f.get("opening_hours", ""), f.get("website", ""), f.get("phone", ""), f.get("wikidata", ""),
              f.get("wikipedia", ""), f.get("wiki_hint", ""), "walk" if f.get("walk_label") else "auto", f.get("walk_label", ""),
-             f.get("walk_via", ""), user_id, time.time())).lastrowid
+             f.get("walk_via", ""), f.get("stay_min"), user_id, time.time())).lastrowid
 
 
 @app.get("/api/geocode")
@@ -491,9 +525,10 @@ def patch_place(place_id: int, body: PlacePatch, user: dict = Depends(require_us
     if body.leg_mode in ("auto", "walk", "transit"):
         # Choosing a mode by hand drops a stroll suggested by the AI
         leg_mode, walk_label = body.leg_mode, ""
-    db.run("UPDATE places SET name=?, kind=?, meals=?, status=?, day=?, pos=?, note=?, leg_mode=?, walk_label=? WHERE id=?",
+    db.run("UPDATE places SET name=?, kind=?, meals=?, status=?, day=?, pos=?, note=?, leg_mode=?, walk_label=?, stay_min=? WHERE id=?",
            (body.name.strip() if body.name else place["name"], kind, meals, status, day, pos,
-            body.note if body.note is not None else place["note"], leg_mode, walk_label, place_id))
+            body.note if body.note is not None else place["note"], leg_mode, walk_label,
+            body.stay_min if body.stay_min is not None else place["stay_min"], place_id))
     if status == "accepted" and place["info_status"] == "none":
         enqueue_info(place_id)
     touch(trip["id"])
@@ -644,6 +679,38 @@ def replan_done(trip_id: int, action: str, user: dict = Depends(require_user)):
     return trip_payload(trip_id, user)
 
 
+# ---------- Time per stop ----------
+
+def stays_job(trip_id: int) -> None:
+    try:
+        trip = db.one("SELECT * FROM trips WHERE id=?", (trip_id,))
+        rows = db.q("SELECT id, name, kind, meals FROM places WHERE trip_id=? AND stay_min IS NULL AND status!='rejected' AND id IS NOT ?",
+                    (trip_id, trip["hotel_id"]))
+        known = {r["id"] for r in rows}
+        with db.tx() as con:
+            con.executemany("UPDATE places SET stay_min=? WHERE id=?",
+                            [(min(720, max(5, it["minutes"])), it["id"]) for it in ai.stays(trip["destination"], rows) if it["id"] in known])
+        set_job(trip_id, "idle")
+    except ai.AIError as exc:
+        set_job(trip_id, "error", str(exc))
+    except Exception:
+        log.exception("stays job failed")
+        set_job(trip_id, "error", "Die Zeiten konnten nicht geschätzt werden. Versuch es noch einmal.")
+
+
+@app.post("/api/trips/{trip_id}/stays")
+def estimate_stays(trip_id: int, user: dict = Depends(require_user)):
+    """Let the AI suggest how long to spend at every place that has no time set yet."""
+    trip = member_trip(trip_id, user)
+    if not ai.enabled():
+        raise HTTPException(400, "Dafür braucht es einen Claude-API-Schlüssel.")
+    if json.loads(trip["job"]).get("state") == "running":
+        raise HTTPException(409, "Es läuft gerade schon eine Planung.")
+    set_job(trip_id, "running", "Claude schätzt die Aufenthaltszeiten …")
+    threading.Thread(target=stays_job, args=(trip_id,), daemon=True).start()
+    return trip_payload(trip_id, user)
+
+
 # ---------- Suggestions (background job per trip) ----------
 
 class SuggestIn(BaseModel):
@@ -716,7 +783,8 @@ def suggest_job(trip_id: int, user_id: int, wishes: str, only_day: int | None) -
                 continue
             fields = {"name": name, "kind": it["kind"], "meals": it.get("meals", []), "lat": it["lat"], "lon": it["lon"],
                       "day": only_day or (it["day"] if 1 <= it["day"] <= days else None), "status": "suggested",
-                      "reason": it.get("reason", "").strip(), "source": "ai" if use_ai else "wiki"}
+                      "reason": it.get("reason", "").strip(), "source": "ai" if use_ai else "wiki",
+                      "stay_min": min(720, max(5, it["stay_min"])) if it.get("stay_min") else None}
             if use_ai:
                 set_job(trip_id, "running", f"Prüfe Orte in OpenStreetMap ({i} von {len(items)}) …")
                 fields["wiki_hint"] = it.get("wikipedia_de", "").strip()

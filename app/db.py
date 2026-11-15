@@ -94,6 +94,13 @@ MIGRATIONS = [
     ALTER TABLE places ADD COLUMN walk_label TEXT NOT NULL DEFAULT '';
     ALTER TABLE places ADD COLUMN walk_via TEXT NOT NULL DEFAULT '';   -- JSON [lat, lon] the stroll passes through
     """,
+    # 3: timetable of a day: time spent per stop, start time per day, live progress on the day itself
+    """
+    ALTER TABLE places ADD COLUMN stay_min INTEGER;                      -- NULL = default for the kind of place
+    ALTER TABLE trips ADD COLUMN day_starts TEXT NOT NULL DEFAULT '{}';  -- JSON {day: "HH:MM"}, missing = 09:00
+    -- JSON {date, passed, left_at}: how many points of that day's route the group has left, and when it left the last
+    ALTER TABLE trips ADD COLUMN live TEXT NOT NULL DEFAULT '{}';
+    """,
 ]
 
 
