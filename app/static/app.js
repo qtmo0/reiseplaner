@@ -472,9 +472,10 @@ async function openTrip(id) {
   $("#locate").onclick = locateMe;
   $("#trip").addEventListener("click", onTripClick);
   $("#panel-body").addEventListener("pointerdown", startSort);
-  $("#panel-body").addEventListener("change", (e) => {
-    if (e.target.id !== "day-start" || !e.target.value) return;
-    e.target.blur();
+  // Save the start time only when the field is left (or Enter): "change" fires after the first digit on desktop
+  $("#panel-body").addEventListener("keydown", (e) => { if (e.target.id === "day-start" && e.key === "Enter") e.target.blur(); });
+  $("#panel-body").addEventListener("focusout", (e) => {
+    if (e.target.id !== "day-start" || !e.target.value || e.target.value === e.target.defaultValue) return;
     busy(null, async () => update(await api("/trips/" + S.data.trip.id, { method: "PATCH", body: { day: S.view, day_start: e.target.value } })));
   });
   // On the day itself the timetable moves with the clock
