@@ -301,7 +301,7 @@ async function renderAuth(inviteCode) {
   const draw = () => {
     $("#app").innerHTML = `<main class="auth"><div class="auth-card">
       <img src="/icons/icon-192.png" alt="" class="logo">
-      <h1>Reiseplaner</h1>
+      <h1>Städtetrip</h1>
       ${invite ? `<p class="invite-note"><b>${esc(invite.inviter)}</b> lädt dich ein: <b>${esc(invite.title)}</b>, ${fmtRange(invite.start_date, invite.end_date)}</p>` : ""}
       <div class="seg" role="tablist">
         <button data-mode="login" class="${mode === "login" ? "on" : ""}">Anmelden</button>
@@ -337,10 +337,10 @@ async function renderAuth(inviteCode) {
 async function renderTrips() {
   stopTrip();
   $("#app").innerHTML = `<main class="home"><header class="home-head">
-      <h1>Reisen</h1>
+      <h1>Touren</h1>
       <button class="icon-btn" id="account" aria-label="Konto und Einstellungen">${ICON.dots}</button>
     </header><div id="trip-list" class="trip-list"><p class="muted">Lade …</p></div>
-    <button class="btn primary fab" id="new-trip">${ICON.plus} Neue Reise</button></main>`;
+    <button class="btn primary fab" id="new-trip">${ICON.plus} Neue Tour</button></main>`;
   $("#new-trip").onclick = newTripDialog;
   $("#account").onclick = accountDialog;
   let trips;
@@ -350,7 +350,7 @@ async function renderTrips() {
       <h2>${esc(t.title)}</h2>
       <p>${fmtRange(t.start_date, t.end_date)}</p>
       <p class="muted">${t.place_count} ${t.place_count === 1 ? "Ort" : "Orte"} · ${esc(t.member_names)}</p></a>`).join("")
-    : `<div class="empty"><h2>Noch keine Reise</h2><p>Leg eine Reise an und lade deine Freunde ein. ${S.ai ? "Claude schlägt euch Orte und Tagesrouten vor." : ""}</p></div>`;
+    : `<div class="empty"><h2>Noch keine Tour</h2><p>Leg eine Tour an und lade deine Freunde ein. ${S.ai ? "Claude schlägt euch Orte und Tagesrouten vor." : ""}</p></div>`;
 }
 
 function accountDialog() {
@@ -396,7 +396,7 @@ function searchUI(el, tripId, onPick) {
 }
 
 function newTripDialog() {
-  modal("Neue Reise", '<div id="step"></div><p class="muted small">Ortssuche: © OpenStreetMap-Mitwirkende</p>', (el, close) => {
+  modal("Neue Tour", '<div id="step"></div><p class="muted small">Ortssuche: © OpenStreetMap-Mitwirkende</p>', (el, close) => {
     searchUI($("#step", el), null, (hit) => {
       const today = new Date().toISOString().slice(0, 10);
       $("#step", el).innerHTML = `<form id="trip-form">
@@ -404,7 +404,7 @@ function newTripDialog() {
         <label>Titel<input name="title" value="${esc(hit.name)}" required maxlength="80"></label>
         <div class="two"><label>Von<input name="start" type="date" required min="${today}" value="${today}"></label>
         <label>Bis<input name="end" type="date" required value="${today}"></label></div>
-        <button class="btn primary" type="submit">Reise anlegen</button></form>`;
+        <button class="btn primary" type="submit">Tour anlegen</button></form>`;
       const form = $("#trip-form", el);
       form.start.onchange = () => { form.end.min = form.start.value; if (form.end.value < form.start.value) form.end.value = form.start.value; };
       form.onsubmit = (e) => {
@@ -437,7 +437,7 @@ async function openTrip(id) {
   $("#app").innerHTML = `<div class="trip" id="trip">
     <div id="map"></div>
     <div class="map-top">
-      <a class="round" href="#/" aria-label="Zurück zu den Reisen">${ICON.back}</a>
+      <a class="round" href="#/" aria-label="Zurück zu den Touren">${ICON.back}</a>
       <div class="offline-pill">Offline · letzter Stand</div>
       <button class="round" id="locate" aria-label="Meinen Standort zeigen">${ICON.locate}</button>
     </div>
@@ -514,7 +514,7 @@ function schedulePoll() {
       if (data.trip.updated_at !== before.trip.updated_at) update(data, wasRunning && data.trip.job.state !== "running");
       else schedulePoll();
     } catch (err) {
-      if (err.status === 404) { toast("Diese Reise gibt es nicht mehr."); location.hash = "#/"; } else schedulePoll();
+      if (err.status === 404) { toast("Diese Tour gibt es nicht mehr."); location.hash = "#/"; } else schedulePoll();
     }
   }, waiting ? 2000 : 20000);
 }
@@ -525,10 +525,10 @@ function renderPanel() {
   const { trip, members, places } = S.data;
   const dayScroll = $("#panel-head .days")?.scrollLeft || 0;
   $("#panel-head").innerHTML = `<div class="head-row">
-      <a class="icon-btn desk-only" href="#/" aria-label="Zurück zu den Reisen">${ICON.back}</a>
+      <a class="icon-btn desk-only" href="#/" aria-label="Zurück zu den Touren">${ICON.back}</a>
       <div class="head-title"><h1>${esc(trip.title)}</h1><p>${fmtRange(trip.start_date, trip.end_date)} · ${members.length} ${members.length === 1 ? "Person" : "Personen"}</p></div>
       <button class="icon-btn" data-act="members" aria-label="Teilnehmer und Einladung">${ICON.users}</button>
-      <button class="icon-btn" data-act="settings" aria-label="Reise bearbeiten">${ICON.dots}</button>
+      <button class="icon-btn" data-act="settings" aria-label="Tour bearbeiten">${ICON.dots}</button>
     </div>
     <div class="chips days" role="tablist">
       <button class="chip ${S.view === "all" ? "on" : ""}" data-view="all">Alle</button>
@@ -699,7 +699,7 @@ function renderDetail() {
   if (el.contains(document.activeElement) && ["TEXTAREA", "INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
   const { trip } = S.data, info = p.info || {}, links = placeLinks(p), mine = p.votes.includes(S.me.id);
   $("#detail-head").innerHTML = `<div class="head-row">
-      <div class="head-title"><h1>${esc(p.name)}</h1><p>${p.id === trip.hotel_id ? "Unterkunft der Reise, Start und Ziel jedes Tages" : [KINDS[p.kind], ...p.meals.map((m) => MEALS[m])].join(" · ") + (p.day ? ` · Tag ${p.day}, Stopp ${stopNumber(p)}` : "")}</p></div>
+      <div class="head-title"><h1>${esc(p.name)}</h1><p>${p.id === trip.hotel_id ? "Unterkunft der Tour, Start und Ziel jedes Tages" : [KINDS[p.kind], ...p.meals.map((m) => MEALS[m])].join(" · ") + (p.day ? ` · Tag ${p.day}, Stopp ${stopNumber(p)}` : "")}</p></div>
       <button class="icon-btn" data-act="close-detail" aria-label="Schließen">${ICON.close}</button></div>`;
 
   const sections = [];
@@ -710,7 +710,7 @@ function renderDetail() {
       <a class="btn" href="${links.google}" target="_blank" rel="noopener">Google Maps</a>
       <button class="btn vote ${mine ? "on" : ""}" data-act="vote" aria-pressed="${mine}">${ICON.thumb} ${p.votes.length || ""}</button></div>`);
   if (p.id === trip.hotel_id) sections.push('<div class="decide"><button class="btn" data-act="unset-hotel">Nicht mehr als Unterkunft</button></div>');
-  else if (p.kind === "lodging") sections.push('<div class="decide"><button class="btn" data-act="set-hotel">Als Unterkunft der Reise festlegen</button></div>');
+  else if (p.kind === "lodging") sections.push('<div class="decide"><button class="btn" data-act="set-hotel">Als Unterkunft der Tour festlegen</button></div>');
   if (p.votes.length) sections.push(`<p class="muted small">Dafür: ${p.votes.map((id) => esc(S.data.members.find((m) => m.id === id)?.name || "?")).join(", ")}</p>`);
   if (p.hours_issue) sections.push(`<p class="warn"><b>Bitte prüfen:</b> Tag ${p.day} ist ein ${WEEKDAYS[dayDate(trip, p.day).getDay() === 0 ? 6 : dayDate(trip, p.day).getDay() - 1]}, und laut OpenStreetMap ist dieser Ort ${esc(p.hours_issue.replace(/^\S+ /, ""))}. Die Angabe kann veraltet sein. Verschieb den Ort auf einen anderen Tag oder sieh auf seiner Website nach.</p>`);
   if (!p.verified) sections.push('<p class="warn">Dieser Ort wurde in OpenStreetMap nicht gefunden. Die Position ist ungefähr; prüft vor dem Losgehen, ob es ihn noch gibt.</p>');
@@ -1014,7 +1014,7 @@ function suggestDialog() {
   modal("Vorschläge", `<form id="suggest-form">
       ${S.ai ? `<label>Wünsche (optional)<textarea name="wishes" rows="3" maxlength="1000" placeholder="z. B. viel Kunst, vegetarisch essen, nicht zu viel laufen">${esc(trip.wishes)}</textarea></label>`
         : '<p class="muted">Es ist kein Claude-API-Schlüssel hinterlegt. Statt eines durchdachten Plans bekommst du bekannte Orte aus Wikipedia in der Nähe, ohne Restaurants.</p>'}
-      ${day ? `<div class="seg"><button type="button" class="on" data-scope="all">${has ? "Ganze Reise ergänzen" : "Ganze Reise"}</button><button type="button" data-scope="day">Nur Tag ${day}</button></div>` : ""}
+      ${day ? `<div class="seg"><button type="button" class="on" data-scope="all">${has ? "Ganze Tour ergänzen" : "Ganze Tour"}</button><button type="button" data-scope="day">Nur Tag ${day}</button></div>` : ""}
       <p class="muted small">${S.ai ? "Claude schlägt Orte und eine Reihenfolge je Tag vor. Jeder Ort wird danach in OpenStreetMap geprüft, das dauert etwa eine Sekunde pro Ort." : ""}
         Vorschläge kannst du einzeln annehmen oder ablehnen.</p>
       <button class="btn primary" type="submit">${ICON.spark} Vorschläge holen</button></form>`, (el, close) => {
@@ -1129,7 +1129,7 @@ function routeDialog() {
 
 function membersDialog() {
   const { trip, members } = S.data, link = `${location.origin}/#/join/${trip.invite_code}`;
-  modal("Teilnehmer", `<ul class="members">${members.map((m) => `<li><span>${esc(m.name)}${m.id === trip.created_by ? ' <small class="muted">hat die Reise angelegt</small>' : ""}</span>
+  modal("Teilnehmer", `<ul class="members">${members.map((m) => `<li><span>${esc(m.name)}${m.id === trip.created_by ? ' <small class="muted">hat die Tour angelegt</small>' : ""}</span>
       ${trip.created_by === S.me.id && m.id !== S.me.id ? `<button class="link danger" data-remove="${m.id}">Entfernen</button>` : ""}</li>`).join("")}</ul>
     <h3>Freunde einladen</h3>
     <p class="muted small">Wer diesen Link öffnet, legt sich ein Konto an (oder meldet sich an) und plant mit.</p>
@@ -1146,7 +1146,7 @@ function membersDialog() {
     };
     el.onclick = (e) => {
       const uid = e.target.dataset.remove;
-      if (uid && confirm("Diese Person aus der Reise entfernen?")) busy(e.target, async () => {
+      if (uid && confirm("Diese Person aus der Tour entfernen?")) busy(e.target, async () => {
         update(await api(`/trips/${trip.id}/members/${uid}`, { method: "DELETE" })); close(); membersDialog();
       });
     };
@@ -1156,7 +1156,7 @@ function membersDialog() {
 // After new dates: which stops fall on a weekday when they are closed
 function movedDialog() {
   const { trip, places } = S.data, flagged = places.filter((p) => p.hours_issue);
-  modal("Reise verschoben", `<p>Neu: ${fmtRange(trip.start_date, trip.end_date)}. Alle geplanten Tage sind mitgezogen.</p>
+  modal("Tour verschoben", `<p>Neu: ${fmtRange(trip.start_date, trip.end_date)}. Alle geplanten Tage sind mitgezogen.</p>
     ${flagged.length ? `<p class="warn"><b>${flagged.length === 1 ? "Ein Ort braucht" : `${flagged.length} Orte brauchen`} einen Blick:</b> ${flagged.length === 1 ? "An seinem neuen Wochentag ist er" : "An ihrem neuen Wochentag sind sie"} laut OpenStreetMap geschlossen.</p>
       <ul class="places">${flagged.map((p) => `<li class="place"><div class="row"><button class="open" data-goto="${p.id}"><span class="badge kind-${p.kind}">${stopNumber(p)}</span>
         <span class="txt"><b>${esc(p.name)}</b><small>Tag ${p.day}, ${fmtDay(dayDate(trip, p.day))} · <span class="flag">${esc(p.hours_issue)}</span></small></span></button></div></li>`).join("")}</ul>
@@ -1175,7 +1175,7 @@ function movedDialog() {
 
 function settingsDialog() {
   const trip = S.data.trip, owner = trip.created_by === S.me.id;
-  modal("Reise bearbeiten", `<form id="trip-form">
+  modal("Tour bearbeiten", `<form id="trip-form">
       <label>Titel<input name="title" value="${esc(trip.title)}" required maxlength="80"></label>
       <div class="two"><label>Von<input name="start" type="date" required value="${trip.start_date}"></label>
       <label>Bis<input name="end" type="date" required value="${trip.end_date}"></label></div>
@@ -1184,9 +1184,9 @@ function settingsDialog() {
       <label>Unterwegs</label>
       <div class="seg" id="mode-seg">${Object.entries(MODES).map(([k, l]) => `<button type="button" data-mode="${k}" class="${trip.mode === k ? "on" : ""}">${l}</button>`).join("")}</div>
       <p class="muted small">„Unterwegs“ bestimmt, wie die Wege zwischen den Stopps berechnet und an die Karten-App übergeben werden.</p>
-      <p class="muted small"><b>Reise verschieben:</b> Ändere „Von“, dann wandert „Bis“ mit, und alle geplanten Tage ziehen auf die neuen Daten um. Orte, die an ihrem neuen Wochentag laut Öffnungszeiten geschlossen sind, werden markiert. Wird die Reise kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
+      <p class="muted small"><b>Tour verschieben:</b> Ändere „Von“, dann wandert „Bis“ mit, und alle geplanten Tage ziehen auf die neuen Daten um. Orte, die an ihrem neuen Wochentag laut Öffnungszeiten geschlossen sind, werden markiert. Wird die Tour kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
       <button class="btn primary" type="submit">Speichern</button></form>
-    <button class="link danger" id="leave">${owner ? "Reise löschen" : "Reise verlassen"}</button>`, (el, close) => {
+    <button class="link danger" id="leave">${owner ? "Tour löschen" : "Tour verlassen"}</button>`, (el, close) => {
     let mode = trip.mode;
     $("#pick-hotel", el).onclick = () => { close(); hotelDialog(); };
     // Moving the start keeps the length of the trip: the end moves by the same number of days
@@ -1246,7 +1246,7 @@ async function start() {
     const me = await api("/me");
     Object.assign(S, { me: me.user, ai: me.ai, version: me.version });
   } catch (err) {
-    $("#app").innerHTML = `<main class="auth"><div class="auth-card"><h1>Reiseplaner</h1><p>${esc(err.message)}</p><button class="btn" onclick="location.reload()">Noch einmal versuchen</button></div></main>`;
+    $("#app").innerHTML = `<main class="auth"><div class="auth-card"><h1>Städtetrip</h1><p>${esc(err.message)}</p><button class="btn" onclick="location.reload()">Noch einmal versuchen</button></div></main>`;
     return;
   }
   addEventListener("hashchange", router);

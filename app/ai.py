@@ -59,7 +59,7 @@ def _ask_json(system: str, text: str, schema: dict, effort: str, what: str) -> d
         raise AIError("Die Antwort konnte nicht gelesen werden.") from exc
 
 
-SUGGEST_SYSTEM = """Du planst Reisen für eine Freundesgruppe und schlägst Orte samt Tagesrouten vor.
+SUGGEST_SYSTEM = """Du planst Städtetrips und Stadterkundungen für eine Freundesgruppe und schlägst Orte samt Tagesrouten vor.
 
 Die App prüft jeden deiner Orte anschließend in OpenStreetMap. Deshalb:
 - Nenne nur Orte, von denen du sicher weißt, dass es sie gibt. Lieber weniger Orte als ein erfundener.
@@ -71,7 +71,7 @@ Die App prüft jeden deiner Orte anschließend in OpenStreetMap. Deshalb:
 - reason: ein bis zwei Sätze auf Deutsch, warum sich der Ort für diese Gruppe lohnt. Keine Jahreszahlen, Preise oder Öffnungszeiten; die Fakten zeigt die App aus Wikipedia und OpenStreetMap.
 
 Tagesplan:
-- day ist der Reisetag (1 = erster Tag), order die Reihenfolge innerhalb des Tages.
+- day ist der Tag der Tour (1 = erster Tag), order die Reihenfolge innerhalb des Tages.
 - Die Orte eines Tages liegen nah beieinander, und die Reihenfolge ergibt einen sinnvollen Weg ohne Hin und Her.
 - Pro vollem Tag vier bis sechs Sehenswürdigkeiten oder Aktivitäten, dazu Essensorte an passender Stelle: Frühstück oder Café am Anfang, Mittagessen in der Mitte, Abendessen am Ende, in der Nähe der jeweils benachbarten Stopps.
 - An- und Abreisetag dürfen kürzer sein.
@@ -122,7 +122,7 @@ SUGGEST_SCHEMA = {
 def suggest(destination: str, days: list[str], existing: list[str], wishes: str, only_day: int | None,
             hotel: str | None = None, weather: list[str] | None = None) -> list[dict]:
     """days: one label per trip day, e.g. 'Freitag, 12.06.2026'. Returns the suggested places."""
-    lines = [f"Reiseziel: {destination}", f"Reisetage ({len(days)}):"]
+    lines = [f"Stadt oder Region: {destination}", f"Tage ({len(days)}):"]
     lines += [f"- Tag {i}: {label}" for i, label in enumerate(days, start=1)]
     if hotel:
         lines.append(f"Unterkunft: {hotel}")
@@ -139,11 +139,11 @@ def suggest(destination: str, days: list[str], existing: list[str], wishes: str,
     elif existing:
         lines.append("Ergänze den Plan um weitere Orte, vor allem für Tage, die noch dünn besetzt sind.")
     else:
-        lines.append("Erstelle einen Plan für alle Reisetage.")
+        lines.append("Erstelle einen Plan für alle Tage.")
     return _ask_json(SUGGEST_SYSTEM, "\n".join(lines), SUGGEST_SCHEMA, EFFORT, "Die Planung")["places"]
 
 
-REPLAN_SYSTEM = """Du passt den Plan einer Reise an die Wettervorhersage an.
+REPLAN_SYSTEM = """Du passt den Plan eines Städtetrips an die Wettervorhersage an.
 
 Du bekommst die Orte jedes Tages in ihrer Reihenfolge und die Vorhersage je Tag. Verteile die vorhandenen Orte neu:
 - Orte im Freien (Parks, Aussichtspunkte, Plätze, Spaziergänge durch Viertel) auf trockene Tage oder die trockenen Stunden eines Tages, Orte drinnen (Museen, Kirchen, Markthallen, Cafés) in die Regenzeiten.
@@ -175,7 +175,7 @@ REPLAN_SCHEMA = {
 
 def replan(destination: str, days: int, weather: list[str], places: list[dict]) -> dict:
     """places: id, name, kind, meals (JSON text), day, pos of every planned place. Returns {summary, plan}."""
-    lines = [f"Reiseziel: {destination}, {days} Tage", "Wettervorhersage:"] + [f"- {w}" for w in weather]
+    lines = [f"Stadt oder Region: {destination}, {days} Tage", "Wettervorhersage:"] + [f"- {w}" for w in weather]
     lines.append("Tage ohne Vorhersage: Wetter unbekannt, dort möglichst nichts ändern.")
     for day in range(1, days + 1):
         lines.append(f"Tag {day}:")
@@ -215,7 +215,7 @@ def stays(destination: str, places: list[dict]) -> list[dict]:
     return _ask_json(STAYS_SYSTEM, "\n".join(lines), STAYS_SCHEMA, "low", "Die Schätzung")["stays"]
 
 
-INFO_SYSTEM = """Du schreibst kurze Ortsinfos für eine Reise-App, auf Deutsch, auch wenn der Quelltext englisch ist.
+INFO_SYSTEM = """Du schreibst kurze Ortsinfos für eine Städtetrip-App, auf Deutsch, auch wenn der Quelltext englisch ist.
 
 Verwende ausschließlich, was im Quelltext steht. Ergänze nichts aus eigenem Wissen, auch wenn du es für richtig hältst: Die App zeigt den Text mit dem Quelltext als Beleg. Gibt der Quelltext zu einem Feld nichts her, bleibt es leer.
 

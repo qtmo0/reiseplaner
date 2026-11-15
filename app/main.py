@@ -179,7 +179,7 @@ def member_trip(trip_id: int, user: dict) -> dict:
     trip = db.one("SELECT t.* FROM trips t JOIN trip_members m ON m.trip_id=t.id WHERE t.id=? AND m.user_id=?",
                   (trip_id, user["id"]))
     if not trip:
-        raise HTTPException(404, "Reise nicht gefunden.")
+        raise HTTPException(404, "Tour nicht gefunden.")
     return trip
 
 
@@ -203,7 +203,7 @@ def check_dates(start: str, end: str) -> None:
     if days < 1:
         raise HTTPException(422, "Das Ende liegt vor dem Anfang.")
     if days > MAX_DAYS:
-        raise HTTPException(422, f"Eine Reise kann höchstens {MAX_DAYS} Tage dauern.")
+        raise HTTPException(422, f"Eine Tour kann höchstens {MAX_DAYS} Tage dauern.")
 
 
 WALK_LIMIT = 25 * 60  # a longer walk becomes public transport if a clearly faster connection exists
@@ -403,7 +403,7 @@ def set_live(trip_id: int, body: LiveIn, user: dict = Depends(require_user)):
 def delete_trip(trip_id: int, user: dict = Depends(require_user)):
     trip = member_trip(trip_id, user)
     if trip["created_by"] != user["id"]:
-        raise HTTPException(403, "Nur wer die Reise angelegt hat, kann sie löschen.")
+        raise HTTPException(403, "Nur wer die Tour angelegt hat, kann sie löschen.")
     db.run("DELETE FROM trips WHERE id=?", (trip_id,))
     return {"ok": True}
 
@@ -419,9 +419,9 @@ def rotate_invite(trip_id: int, user: dict = Depends(require_user)):
 def remove_member(trip_id: int, user_id: int, user: dict = Depends(require_user)):
     trip = member_trip(trip_id, user)
     if user_id == trip["created_by"]:
-        raise HTTPException(403, "Wer die Reise angelegt hat, bleibt dabei.")
+        raise HTTPException(403, "Wer die Tour angelegt hat, bleibt dabei.")
     if user_id != user["id"] and trip["created_by"] != user["id"]:
-        raise HTTPException(403, "Andere entfernen kann nur, wer die Reise angelegt hat.")
+        raise HTTPException(403, "Andere entfernen kann nur, wer die Tour angelegt hat.")
     db.run("DELETE FROM trip_members WHERE trip_id=? AND user_id=?", (trip_id, user_id))
     touch(trip_id)
     return {"ok": True} if user_id == user["id"] else trip_payload(trip_id, user)
@@ -661,7 +661,7 @@ def replan(trip_id: int, user: dict = Depends(require_user)):
     if json.loads(trip["job"]).get("state") == "running":
         raise HTTPException(409, "Es läuft gerade schon eine Planung.")
     if not _weather_lines(trip):
-        raise HTTPException(400, "Für diese Reise gibt es noch keine Wettervorhersage.")
+        raise HTTPException(400, "Für diese Tour gibt es noch keine Wettervorhersage.")
     set_job(trip_id, "running", "Claude plant die Tage nach dem Wetter um …")
     threading.Thread(target=replan_job, args=(trip_id,), daemon=True).start()
     return trip_payload(trip_id, user)

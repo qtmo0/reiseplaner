@@ -1,4 +1,4 @@
-# Reiseplaner
+# Städtetrip
 
 Städtetrips und Reisen gemeinsam planen: Claude schlägt Orte und eine Route für jeden Tag vor, ihr nehmt an, lehnt ab, sortiert um und ergänzt eigene Orte. Unterwegs läuft die App als installierbare Web-App auf dem Handy, die Navigation übernimmt Apple Karten oder Google Maps.
 
@@ -16,13 +16,13 @@ Handy / Desktop ──▶ app (FastAPI) ──▶ Claude API           Vorschlä
 
 - **Reisen:** Ziel, Zeitraum, Teilnehmer, ein Plan pro Tag und eine Ideenliste für Orte ohne festen Tag.
 - **Vorschläge:** Claude schlägt Orte samt Reihenfolge je Tag vor, auf Wunsch mit euren Vorlieben („viel Kunst, vegetarisch“) oder nur für einen Tag. Jeder Vorschlag wird in OpenStreetMap nachgeschlagen; was dort nicht zu finden ist, wird als ungeprüft markiert. Vorschläge lassen sich einzeln oder tageweise annehmen und ablehnen.
-- **Unterkunft:** Eine Unterkunft je Reise (unter „Reise bearbeiten“ oder bei einem Ort der Art Unterkunft). Jeder Tag beginnt und endet dort.
+- **Unterkunft:** Eine Unterkunft je Reise (unter „Tour bearbeiten“ oder bei einem Ort der Art Unterkunft). Jeder Tag beginnt und endet dort.
 - **Karte und Wege:** OpenStreetMap mit nummerierten Wegmarken und dem Weg des Tages entlang echter Wege. Abschnitte bis 25 Minuten geht ihr zu Fuß; längere plant die App mit Bus und Bahn, wenn das deutlich schneller ist, mit Linie, Dauer und Umstiegen. Jeder Abschnitt lässt sich antippen und auf „Zu Fuß“ oder „Öffis“ festlegen. Alternativ die ganze Reise mit Rad oder Auto.
 - **Spaziergänge:** Claude kann den Weg zwischen zwei Stopps als Spaziergang vorschlagen („am Flussufer entlang“); er erscheint grün in Liste und Karte.
 - **Wetter:** Vorhersage je Tag (ab etwa 16 Tagen vorher), davor die Werte derselben Tage aus den letzten drei Jahren. Claude berücksichtigt die Vorhersage bei Vorschlägen. Bei wahrscheinlichem Regen bietet die App „Tage umplanen“ an: Claude tauscht Orte drinnen und draußen zwischen den Tagen, mit „Rückgängig“.
 - **Zeitplan:** Jeder Stopp hat eine Aufenthaltsdauer (von Claude vorgeschlagen, sonst ein üblicher Wert je Art, mit − und + änderbar) und jeder Tag eine Startzeit. Daraus und aus den Wegzeiten entstehen Uhrzeiten für jede Station und ein Zeitbalken für den Tag, mit Hinweis, wenn ein Ort dann noch nicht offen ist oder schon schließt.
 - **Live am Reisetag:** Der Zeitbalken zeigt die aktuelle Uhrzeit. Mit „Los geht’s“ und „Weiter zum nächsten Stopp“ meldet die Gruppe ihren Fortschritt; die übrigen Zeiten verschieben sich, und die App sagt, wie weit ihr hinter dem Plan seid und wo dadurch weniger Zeit bleibt.
-- **Reise verschieben:** Unter „Reise bearbeiten“ ein neues Startdatum wählen; das Ende und alle geplanten Tage ziehen mit. Orte, die an ihrem Wochentag laut Öffnungszeiten geschlossen sind (oder zur geplanten Mahlzeit nicht offen haben), sind in Liste, Karte und Details markiert, nach dem Verschieben zusätzlich in einer Übersicht.
+- **Tour verschieben:** Unter „Tour bearbeiten“ ein neues Startdatum wählen; das Ende und alle geplanten Tage ziehen mit. Orte, die an ihrem Wochentag laut Öffnungszeiten geschlossen sind (oder zur geplanten Mahlzeit nicht offen haben), sind in Liste, Karte und Details markiert, nach dem Verschieben zusätzlich in einer Übersicht.
 - **Richtungspfeile:** Kleine Pfeile auf der Tagesroute zeigen die Laufrichtung, nur wo zwischen zwei Stopps Platz dafür ist.
 - **Übergabe:** Jeder Ort, jeder Abschnitt und jede Tagesroute öffnet sich mit einem Tipp in Apple Karten oder Google Maps, die Route mit allen Zwischenstopps, ein Öffi-Abschnitt als ÖPNV-Verbindung.
 - **Ortsinfos:** Kurzbeschreibung, Geschichte und Wissenswertes aus dem Wikipedia-Artikel des Orts (von Claude zusammengefasst, Quelle verlinkt), dazu Adresse, Öffnungszeiten, Website und Telefon aus OpenStreetMap. Ohne Artikel bleibt die Beschreibung leer.

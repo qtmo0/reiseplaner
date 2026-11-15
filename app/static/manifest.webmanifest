@@ -1,7 +1,7 @@
 {
-  "name": "Reiseplaner",
-  "short_name": "Reisen",
-  "description": "Reisen gemeinsam planen: Tagesrouten, Karte und Ortsinfos",
+  "name": "Städtetrip",
+  "short_name": "Städtetrip",
+  "description": "Städtetrips gemeinsam planen: Tagesrouten, Karte und Ortsinfos",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
