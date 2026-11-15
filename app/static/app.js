@@ -674,7 +674,7 @@ function placeRow(p, leg, legIndex, r) {
   if (r) {
     const hint = hoursHint(p, r.arr, r.arr + r.stay);
     sub = `<div class="sub"><span class="stay"><button data-act="stay" data-d="-1" aria-label="Kürzer bleiben" ${S.offline ? "disabled" : ""}>−</button>
-      <b>${r.stay} min</b><button data-act="stay" data-d="1" aria-label="Länger bleiben" ${S.offline ? "disabled" : ""}>+</button></span>
+      <b><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12M6 21h12M7 3v3l5 6-5 6v3M17 3v3l-5 6 5 6v3"/></svg>${r.stay} min</b><button data-act="stay" data-d="1" aria-label="Länger bleiben" ${S.offline ? "disabled" : ""}>+</button></span>
       ${p.stay_min == null ? '<span class="muted">Vorschlag</span>' : ""}${hint?.text ? `<span class="${hint.warn ? "flag" : "muted"}">${hint.text}</span>` : ""}</div>` + liveLine(r, sch_());
   }
   return `<li class="place ${p.status} ${S.sel === p.id ? "sel" : ""} ${r ? r.state : ""}" data-id="${p.id}">

@@ -189,9 +189,11 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .clock input { width: auto; min-height: 40px; margin: 0; padding: 4px 10px; }
 .time { flex: none; width: 42px; color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; text-align: right; padding-right: 4px; }
 .sub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: -4px 0 6px 94px; font-size: .8rem; }
-.stay { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 18px; background: var(--surface); }
-.stay b { min-width: 58px; text-align: center; font-weight: 600; }
-.stay button { width: 40px; height: 36px; border: 0; background: none; font-size: 1.15rem; color: var(--text); }
+.stay { display: inline-flex; align-items: center; gap: 2px; color: var(--text); font-size: .85rem; margin-left: -8px; }
+.stay b { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; white-space: nowrap; }
+.stay b svg { width: 13px; height: 13px; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.stay button { width: 28px; height: 28px; border: 0; border-radius: 50%; background: none; font-size: 1rem; color: var(--text); padding: 0; }
+.stay button:hover { background: var(--surface2); }
 .stay button:disabled { opacity: .35; }
 .sub.live { color: var(--text); font-size: .86rem; }
 .btn.small { min-height: 40px; padding: 0 14px; font-size: .9rem; }
