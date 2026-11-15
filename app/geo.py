@@ -175,6 +175,125 @@ def route(coords: list[tuple[float, float]], mode: str) -> dict | None:
     return out
 
 
+# ---------- Public transport (Transitous) ----------
+
+TRANSITOUS_URL = os.environ.get("TRANSITOUS_URL", "https://api.transitous.org")
+# Transitous asks every client to name itself with a way of contact
+TRANSIT_AGENT = f"Reiseplaner/1.0 ({CONTACT or 'https://github.com/qtmo0/reiseplaner'})"
+TRANSIT_MODES = {"BUS": "Bus", "TRAM": "Tram", "SUBWAY": "U-Bahn", "METRO": "U-Bahn", "SUBURBAN": "S-Bahn", "RAIL": "Bahn",
+                 "REGIONAL_RAIL": "Regionalbahn", "REGIONAL_FAST_RAIL": "Regionalbahn", "LONG_DISTANCE": "Fernzug",
+                 "HIGHSPEED_RAIL": "Fernzug", "FERRY": "Fähre", "FUNICULAR": "Standseilbahn", "CABLE_CAR": "Seilbahn",
+                 "AERIAL_LIFT": "Seilbahn", "COACH": "Fernbus"}
+_transit_calls: list[float] = []
+
+
+def transit(a: tuple, b: tuple, day, hour: int) -> dict | None:
+    """Fastest public transport connection from a to b (lat, lon) leaving around hour:30 local time on `day`.
+    None if there is none or the service is unreachable. Answers are cached per weekday and hour for two weeks."""
+    key = f"transit:{a[0]:.4f},{a[1]:.4f}:{b[0]:.4f},{b[1]:.4f}:{day.weekday()}:{hour}"
+    hit = db.cache_get(key, max_age_days=14)
+    if hit is not None:
+        return hit or None
+    now = time.time()
+    _transit_calls[:] = [t for t in _transit_calls if now - t < 86400]
+    if len(_transit_calls) >= 300:  # stay far below the 720 requests a day the service allows without asking
+        return None
+    _transit_calls.append(now)
+    # Local time from the longitude: close enough to pick a typical connection for that time of day
+    utc_hour = hour - round(a[1] / 15)
+    when = f"{day.isoformat()}T{utc_hour % 24:02d}:30:00Z"
+    try:
+        r = _http.get(f"{TRANSITOUS_URL}/api/v5/plan", headers={"User-Agent": TRANSIT_AGENT}, timeout=15, params={
+            "fromPlace": f"{a[0]:.5f},{a[1]:.5f}", "toPlace": f"{b[0]:.5f},{b[1]:.5f}", "time": when, "numItineraries": 3})
+        r.raise_for_status()
+        options = [it for it in r.json().get("itineraries", []) if any(leg["mode"] != "WALK" for leg in it["legs"])]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+    if not options:
+        db.cache_set(key, {})
+        return None
+    best = min(options, key=lambda it: it["duration"])
+    rides = [leg for leg in best["legs"] if leg["mode"] != "WALK"]
+    out = {
+        "duration": best["duration"],
+        "transfers": max(0, len(rides) - 1),
+        "walk": sum(leg["duration"] for leg in best["legs"] if leg["mode"] == "WALK"),
+        "lines": [{"kind": TRANSIT_MODES.get(leg["mode"], "Linie"),
+                   "name": leg.get("displayName") or leg.get("routeShortName") or leg.get("routeLongName") or "",
+                   "headsign": leg.get("headsign") or "", "from": leg["from"]["name"], "to": leg["to"]["name"],
+                   "duration": leg["duration"]} for leg in rides],
+        "segs": [{"m": "w" if leg["mode"] == "WALK" else "t", "g": leg["legGeometry"]["points"],
+                  "p": leg["legGeometry"].get("precision", 6)} for leg in best["legs"] if leg.get("legGeometry")],
+    }
+    db.cache_set(key, out)
+    return out
+
+
+# ---------- Weather (Open-Meteo) ----------
+
+def weather(lat: float, lon: float) -> dict:
+    """Forecast per date for the next 16 days: {date: {tmax, tmin, pop, code, rain_from}}. Empty if unreachable."""
+    key = f"weather:{lat:.2f},{lon:.2f}"
+    hit = db.cache_get(key, max_age_days=0.125)  # three hours
+    if hit is not None:
+        return hit
+    try:
+        r = _http.get("https://api.open-meteo.com/v1/forecast", timeout=8, params={
+            "latitude": f"{lat:.3f}", "longitude": f"{lon:.3f}", "timezone": "auto", "forecast_days": 16,
+            "daily": "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max",
+            "hourly": "precipitation_probability"})
+        r.raise_for_status()
+        data = r.json()
+        daily, hourly = data["daily"], data["hourly"]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return {}
+    out = {}
+    for i, day in enumerate(daily["time"]):
+        if daily["temperature_2m_max"][i] is None:
+            continue
+        # First hour between 8 and 21 o'clock with rain more likely than not
+        wet = [int(t[11:13]) for t, p in zip(hourly["time"], hourly["precipitation_probability"])
+               if t.startswith(day) and p is not None and p >= 50 and 8 <= int(t[11:13]) <= 21]
+        out[day] = {"tmax": round(daily["temperature_2m_max"][i]), "tmin": round(daily["temperature_2m_min"][i]),
+                    "pop": daily["precipitation_probability_max"][i], "code": daily["weather_code"][i],
+                    "rain_from": wet[0] if wet else None}
+    db.cache_set(key, out)
+    return out
+
+
+def climate(lat: float, lon: float, start: str, end: str) -> dict | None:
+    """What the same dates were like in the last three years: {tmax, tmin, wet (share of days with rain), years}."""
+    from datetime import date, timedelta
+    key = f"climate:{lat:.2f},{lon:.2f}:{start[5:]}:{end[5:]}"
+    hit = db.cache_get(key, max_age_days=120)
+    if hit is not None:
+        return hit or None
+    a, b = date.fromisoformat(start), date.fromisoformat(end)
+    highs, lows, rain = [], [], []
+    try:
+        for back in (1, 2, 3):
+            ya = a.replace(year=a.year - back, day=min(a.day, 28))
+            while ya > date.today() - timedelta(7):  # the archive ends a few days before today
+                ya = ya.replace(year=ya.year - 1)
+            yb = ya + (b - a)
+            r = _http.get("https://archive-api.open-meteo.com/v1/archive", timeout=10, params={
+                "latitude": f"{lat:.3f}", "longitude": f"{lon:.3f}", "start_date": ya.isoformat(), "end_date": yb.isoformat(),
+                "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum", "timezone": "auto"})
+            r.raise_for_status()
+            d = r.json()["daily"]
+            highs += [v for v in d["temperature_2m_max"] if v is not None]
+            lows += [v for v in d["temperature_2m_min"] if v is not None]
+            rain += [v >= 1 for v in d["precipitation_sum"] if v is not None]
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+    if not highs or not rain:
+        return None
+    out = {"tmax": round(sum(highs) / len(highs)), "tmin": round(sum(lows) / len(lows)),
+           "wet": round(sum(rain) / len(rain), 2), "years": 3}
+    db.cache_set(key, out)
+    return out
+
+
 # ---------- Wikipedia / Wikidata ----------
 
 def _wiki_api(lang: str, params: dict) -> dict:
@@ -244,7 +363,7 @@ def find_article(place: dict) -> dict | None:
         candidates.append((lang, title))
     if place.get("wikidata"):
         links = wikidata_articles(place["wikidata"])
-        candidates = [("de", links["de"])] * ("de" in links) + candidates + [("en", links["en"])] * ("en" in links)
+        candidates = ([("de", links["de"])] if "de" in links else []) + candidates + ([("en", links["en"])] if "en" in links else [])
     for lang, title in candidates:
         page = wiki_page(lang, title)
         if page:

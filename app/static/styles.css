@@ -1,14 +1,14 @@
 :root {
   --bg: #f6f5f1; --surface: #ffffff; --surface2: #efeee9; --text: #1c1b19; --muted: #6a6862; --line: #e2e0d9;
   --accent: #0f766e; --accent-ink: #ffffff; --accent-soft: #dff1ee; --danger: #b42318; --warn-bg: #fdf3d7; --warn-ink: #6b4d00;
-  --route: #0f766e; --route-case: #ffffff; --shadow: 0 6px 24px rgba(20, 20, 15, .14);
+  --route: #0f766e; --route-case: #ffffff; --transit: #1d4ed8; --scenic: #15803d; --shadow: 0 6px 24px rgba(20, 20, 15, .14);
   --top: env(safe-area-inset-top, 0px); --bottom: env(safe-area-inset-bottom, 0px);
   --radius: 14px;
 }
 [data-theme="dark"] {
   --bg: #141413; --surface: #1e1e1c; --surface2: #2a2a27; --text: #ecebe6; --muted: #a3a199; --line: #35352f;
   --accent: #35c9b6; --accent-ink: #04211d; --accent-soft: #173833; --danger: #ff8a7a; --warn-bg: #3a2f10; --warn-ink: #f2d37a;
-  --route: #35c9b6; --route-case: #0c2623; --shadow: 0 6px 24px rgba(0, 0, 0, .5);
+  --route: #35c9b6; --route-case: #0c2623; --transit: #7aa7ff; --scenic: #6fcf7f; --shadow: 0 6px 24px rgba(0, 0, 0, .5);
 }
 .kind-sight { --k: #c2410c; } .kind-museum { --k: #7c3aed; } .kind-nature { --k: #15803d; } .kind-restaurant { --k: #be123c; }
 .kind-cafe { --k: #a16207; } .kind-bar { --k: #be185d; } .kind-shop { --k: #0e7490; } .kind-activity { --k: #1d4ed8; }
@@ -69,7 +69,7 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 }
 .chip b { font-weight: 600; }
 .chip.small { min-height: 38px; padding: 0 12px; font-size: .86rem; }
-.chip.small svg { width: 16px; height: 16px; }
+.chip svg { width: 16px; height: 16px; }
 .chip.on { background: var(--text); border-color: var(--text); color: var(--bg); }
 .chip.meal { border-style: dashed; }
 .chip.meal.on { border-style: solid; }
@@ -164,7 +164,24 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 
 .places { list-style: none; margin: 0; padding: 0; }
 .place { position: relative; }
-.leg { margin-left: 15px; padding: 2px 0 2px 26px; border-left: 2px dotted var(--line); color: var(--muted); font-size: .78rem; }
+.leg {
+  display: flex; align-items: center; gap: 6px; width: calc(100% - 15px); min-height: 34px; margin-left: 15px; padding: 4px 8px 4px 24px;
+  border: 0; border-left: 2px dotted var(--line); background: none; color: var(--muted); font-size: .8rem; text-align: left;
+}
+.leg svg { width: 16px; height: 16px; }
+.leg span { min-width: 0; }
+.leg.transit { color: var(--transit); border-left: 2px dashed var(--transit); }
+.leg.scenic { color: var(--scenic); border-left: 2px solid var(--scenic); }
+.hotel-row .open { min-height: 48px; }
+.hotel-row .badge svg { width: 18px; height: 18px; }
+.hotel-set { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 400; }
+.weather { display: flex; align-items: flex-start; gap: 8px; margin: 2px 0 8px; color: var(--muted); font-size: .86rem; }
+.weather svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; margin-top: 1px; }
+.notice.stack { flex-direction: column; align-items: flex-start; gap: 0; }
+.notice .link { min-height: 36px; padding: 4px 12px 4px 0; }
+.rides { margin: 8px 0; padding-left: 22px; }
+.rides li { margin: 6px 0; }
+.rides small { display: block; color: var(--muted); }
 .sorting .leg { visibility: hidden; }
 .place .row { display: flex; align-items: center; gap: 4px; border-radius: 12px; }
 .place.sel .row { background: var(--accent-soft); }
@@ -205,6 +222,10 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 [data-theme="dark"] .leaflet-bar a { background: var(--surface); color: var(--text); border-color: var(--line); }
 .route-line { stroke: var(--route); }
 .route-case { stroke: var(--route-case); }
+.route-transit { stroke: var(--transit); }
+.route-scenic { stroke: var(--scenic); }
+.pin svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.pin.hotel { border-radius: 9px; }
 .pin {
   display: grid; place-items: center; width: 30px; height: 30px; margin: 2px; border-radius: 50%; background: var(--k); color: #fff;
   border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .35); font-weight: 700; font-size: 13px; transition: transform .15s;

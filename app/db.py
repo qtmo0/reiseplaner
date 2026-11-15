@@ -85,6 +85,15 @@ MIGRATIONS = [
         created_at REAL NOT NULL
     );
     """,
+    # 2: hotel as start and end of each day, per-leg preferences, undo for weather replanning
+    """
+    ALTER TABLE trips ADD COLUMN hotel_id INTEGER;
+    ALTER TABLE trips ADD COLUMN replan TEXT NOT NULL DEFAULT '{}';
+    -- how to get from this place to the next stop: auto|walk|transit; a labelled walk is a suggested stroll
+    ALTER TABLE places ADD COLUMN leg_mode TEXT NOT NULL DEFAULT 'auto';
+    ALTER TABLE places ADD COLUMN walk_label TEXT NOT NULL DEFAULT '';
+    ALTER TABLE places ADD COLUMN walk_via TEXT NOT NULL DEFAULT '';   -- JSON [lat, lon] the stroll passes through
+    """,
 ]
 
 

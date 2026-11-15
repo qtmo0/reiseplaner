@@ -74,6 +74,10 @@ Tagesplan:
 - Die Orte eines Tages liegen nah beieinander, und die Reihenfolge ergibt einen sinnvollen Weg ohne Hin und Her.
 - Pro vollem Tag vier bis sechs Sehenswürdigkeiten oder Aktivitäten, dazu Essensorte an passender Stelle: Frühstück oder Café am Anfang, Mittagessen in der Mitte, Abendessen am Ende, in der Nähe der jeweils benachbarten Stopps.
 - An- und Abreisetag dürfen kürzer sein.
+- Ist eine Unterkunft genannt, beginnt und endet jeder Tag dort: Der erste und der letzte Stopp liegen günstig zur Unterkunft. Die Unterkunft selbst schlägst du nicht vor.
+- Die App plant Wege über 25 Minuten automatisch mit Bus und Bahn. Weiter auseinanderliegende Stopps an einem Tag sind deshalb in Ordnung, wenn sie zusammenpassen.
+- Spaziergänge: Wenn der Fußweg von einem Stopp zum nächsten selbst lohnt (Uferpromenade, Park, Altstadtgassen, Aussichtsweg) und höchstens etwa 45 Minuten dauert, beschreibe ihn beim ersten der beiden Stopps in walk_to_next in wenigen Worten, etwa „am Flussufer entlang“. walk_via nennt dazu einen Ort auf diesem Weg, so wie er in OpenStreetMap heißt, damit die Route dort entlangführt; "" wenn dir keiner sicher einfällt. Ein, zwei solche Spaziergänge pro Tag sind gut, bei den übrigen Stopps bleibt walk_to_next "".
+- Liegt eine Wettervorhersage vor, plane danach: Parks, Aussichtspunkte und Spaziergänge auf trockene Tage und Stunden, Museen und andere Orte drinnen in die Regenzeiten.
 - day 0 steht für zusätzliche Ideen ohne festen Tag (höchstens sechs), etwa eine gute Bar oder ein Ausweichprogramm bei Regen.
 
 Kategorien:
@@ -99,8 +103,11 @@ SUGGEST_SCHEMA = {
                     "lon": {"type": "number"},
                     "wikipedia_de": {"type": "string"},
                     "reason": {"type": "string"},
+                    "walk_to_next": {"type": "string"},
+                    "walk_via": {"type": "string"},
                 },
-                "required": ["name", "kind", "meals", "day", "order", "lat", "lon", "wikipedia_de", "reason"],
+                "required": ["name", "kind", "meals", "day", "order", "lat", "lon", "wikipedia_de", "reason",
+                             "walk_to_next", "walk_via"],
                 "additionalProperties": False,
             },
         }
@@ -110,10 +117,16 @@ SUGGEST_SCHEMA = {
 }
 
 
-def suggest(destination: str, days: list[str], existing: list[str], wishes: str, only_day: int | None) -> list[dict]:
+def suggest(destination: str, days: list[str], existing: list[str], wishes: str, only_day: int | None,
+            hotel: str | None = None, weather: list[str] | None = None) -> list[dict]:
     """days: one label per trip day, e.g. 'Freitag, 12.06.2026'. Returns the suggested places."""
     lines = [f"Reiseziel: {destination}", f"Reisetage ({len(days)}):"]
     lines += [f"- Tag {i}: {label}" for i, label in enumerate(days, start=1)]
+    if hotel:
+        lines.append(f"Unterkunft: {hotel}")
+    if weather:
+        lines.append("Wettervorhersage:")
+        lines += [f"- {w}" for w in weather]
     if wishes:
         lines.append(f"Wünsche der Gruppe: {wishes}")
     if existing:
@@ -126,6 +139,47 @@ def suggest(destination: str, days: list[str], existing: list[str], wishes: str,
     else:
         lines.append("Erstelle einen Plan für alle Reisetage.")
     return _ask_json(SUGGEST_SYSTEM, "\n".join(lines), SUGGEST_SCHEMA, EFFORT, "Die Planung")["places"]
+
+
+REPLAN_SYSTEM = """Du passt den Plan einer Reise an die Wettervorhersage an.
+
+Du bekommst die Orte jedes Tages in ihrer Reihenfolge und die Vorhersage je Tag. Verteile die vorhandenen Orte neu:
+- Orte im Freien (Parks, Aussichtspunkte, Plätze, Spaziergänge durch Viertel) auf trockene Tage oder die trockenen Stunden eines Tages, Orte drinnen (Museen, Kirchen, Markthallen, Cafés) in die Regenzeiten.
+- Die Orte eines Tages sollen weiter nah beieinanderliegen und eine sinnvolle Reihenfolge ergeben. Tausche lieber ganze Tage oder Tageshälften, als einzelne Orte quer durch die Stadt zu schieben.
+- Essensorte bleiben an einer passenden Stelle im Tag: Frühstück am Anfang, Mittagessen in der Mitte, Abendessen am Ende.
+- Ändere so wenig wie nötig. Passt der Plan schon zum Wetter, gib ihn unverändert zurück.
+
+Gib jeden Ort genau einmal zurück, mit seiner id, dem Tag und der Position im Tag (order, ab 1). Füge keine Orte hinzu und lass keinen weg.
+summary: ein bis zwei Sätze auf Deutsch, was du geändert hast und warum, oder dass nichts zu ändern war."""
+
+REPLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "summary": {"type": "string"},
+        "plan": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {"id": {"type": "integer"}, "day": {"type": "integer"}, "order": {"type": "integer"}},
+                "required": ["id", "day", "order"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["summary", "plan"],
+    "additionalProperties": False,
+}
+
+
+def replan(destination: str, days: int, weather: list[str], places: list[dict]) -> dict:
+    """places: id, name, kind, meals (JSON text), day, pos of every planned place. Returns {summary, plan}."""
+    lines = [f"Reiseziel: {destination}, {days} Tage", "Wettervorhersage:"] + [f"- {w}" for w in weather]
+    lines.append("Tage ohne Vorhersage: Wetter unbekannt, dort möglichst nichts ändern.")
+    for day in range(1, days + 1):
+        lines.append(f"Tag {day}:")
+        lines += [f"- id {p['id']}: {p['name']} ({p['kind']}{', ' + ', '.join(json.loads(p['meals'])) if p['meals'] != '[]' else ''})"
+                  for p in places if p["day"] == day]
+    return _ask_json(REPLAN_SYSTEM, "\n".join(lines), REPLAN_SCHEMA, EFFORT, "Das Umplanen")
 
 
 INFO_SYSTEM = """Du schreibst kurze Ortsinfos für eine Reise-App, auf Deutsch, auch wenn der Quelltext englisch ist.

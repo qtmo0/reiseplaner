@@ -34,6 +34,19 @@ Jede Entscheidung mit einem Satz Begründung. Stand: Version 1, November 2026.
 - **Apple Karten über die „Unified Map URLs“ (`/directions` mit `waypoint`, `/place`).** Das ist Apples dokumentierter Weg für Zwischenstopps und setzt iOS 18.4 voraus. Google Maps über die Maps-URLs mit `waypoints`.
 - **Mehr als zehn Stopps werden in mehrere Links geteilt.** Google nimmt höchstens neun Zwischenstopps; Apple nennt keine Grenze, bekommt aber dieselbe Teilung, damit sich beide gleich verhalten.
 
+## Unterkunft, Öffis, Spaziergänge, Wetter (November 2026, „Variante B“)
+
+- **Eine Unterkunft je Reise, nicht je Tag.** Das deckt Städtetrips ab; Rundreisen mit wechselnden Hotels stehen in der ROADMAP.
+- **Jeder Abschnitt zwischen zwei Stopps wird einzeln geplant.** Nur so können Fußweg, Spaziergang und Öffis an einem Tag gemischt werden; nebenbei bleiben beim Umsortieren alle unveränderten Abschnitte im Cache.
+- **Bis 25 Minuten zu Fuß, darüber Öffis, wenn die Verbindung mindestens 15 % schneller ist.** Kürzere Wege lohnen den Gang zur Haltestelle selten; die Grenze steht als `WALK_LIMIT` in `app/main.py`, und jeder Abschnitt lässt sich von Hand umstellen.
+- **Fahrplandaten von Transitous.** Der einzige freie Dienst ohne Schlüssel mit europaweiter Abdeckung; seine Bedingungen (quelloffen, nicht kommerziell, wenige Anfragen, Kontaktangabe) sind der Grund, warum das Repo öffentlich und MIT-lizenziert ist.
+- **Verbindungen gelten für einen „typischen Wochentag“.** Fahrpläne reichen nur wenige Wochen voraus; für spätere Reisen fragt die App denselben Wochentag der kommenden Woche ab und sagt das dazu. Abfahrtszeiten zeigt sie deshalb nicht, die liefert die Karten-App.
+- **Ohne Fahrplandaten bleibt ein Abschnitt als „Öffis“ markiert,** mit gerader gepunkteter Linie und Übergabe an die Karten-App, statt eine Verbindung zu erfinden.
+- **Spaziergänge sind eine Eigenschaft des Abschnitts, kein eigener Stopp.** Claude beschreibt den Weg in wenigen Worten und nennt einen Ort darauf; nur wenn OpenStreetMap diesen Ort in der Nähe kennt, führt die Route darüber. Die App sagt dazu, dass die eingezeichnete Strecke vom beschriebenen Weg abweichen kann.
+- **Wetter von Open-Meteo, Regenwarnung ab 60 % Wahrscheinlichkeit.** Frei, ohne Schlüssel, 16 Tage Vorhersage. Ohne Vorhersage zeigt die App die Werte derselben Kalendertage aus den letzten drei Jahren und nennt sie auch so, nicht „Vorhersage“.
+- **„Tage umplanen“ verschiebt nur vorhandene Orte und lässt sich rückgängig machen.** Claude fügt nichts hinzu und entfernt nichts; der Stand davor wird gespeichert, bis jemand „Behalten“ oder „Rückgängig“ wählt.
+- **Die Übergabe der ganzen Tagesroute bleibt ein Fußweg.** Apple Karten und Google Maps planen Öffis nicht über mehrere Stopps; ein Öffi-Abschnitt wird deshalb einzeln übergeben.
+
 ## Konten und Zusammenarbeit
 
 - **Konto = Name + Passwort, Einladung = Link je Reise.** Für eine Freundesgruppe reicht das; kein E-Mail-Versand, kein fremder Login-Dienst. Wer den Link öffnet, legt ein Konto an und ist in der Reise.

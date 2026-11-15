@@ -5,7 +5,9 @@ Städtetrips und Reisen gemeinsam planen: Claude schlägt Orte und eine Route f�
 ```
 Handy / Desktop ──▶ app (FastAPI) ──▶ Claude API           Vorschläge, Ortstexte
                         │        ──▶ Nominatim (OSM)       Ortssuche, Adresse, Öffnungszeiten
-                        │        ──▶ FOSSGIS-Routing       Tagesroute entlang echter Wege
+                        │        ──▶ FOSSGIS-Routing       Fußwege entlang echter Wege
+                        │        ──▶ Transitous            Bus- und Bahnverbindungen
+                        │        ──▶ Open-Meteo            Wettervorhersage
                         ▼        ──▶ Wikipedia, Wikidata   Quellen für die Ortstexte
               data/reiseplaner.db (SQLite)
 ```
@@ -14,8 +16,11 @@ Handy / Desktop ──▶ app (FastAPI) ──▶ Claude API           Vorschlä
 
 - **Reisen:** Ziel, Zeitraum, Teilnehmer, ein Plan pro Tag und eine Ideenliste für Orte ohne festen Tag.
 - **Vorschläge:** Claude schlägt Orte samt Reihenfolge je Tag vor, auf Wunsch mit euren Vorlieben („viel Kunst, vegetarisch“) oder nur für einen Tag. Jeder Vorschlag wird in OpenStreetMap nachgeschlagen; was dort nicht zu finden ist, wird als ungeprüft markiert. Vorschläge lassen sich einzeln oder tageweise annehmen und ablehnen.
-- **Karte:** OpenStreetMap mit nummerierten Wegmarken und der Tagesroute entlang echter Wege, wahlweise zu Fuß, mit dem Rad oder dem Auto. Dazu Entfernung und Dauer je Abschnitt.
-- **Übergabe:** Jeder Ort und jede Tagesroute öffnet sich mit einem Tipp in Apple Karten oder Google Maps, die Route mit allen Zwischenstopps.
+- **Unterkunft:** Eine Unterkunft je Reise (unter „Reise bearbeiten“ oder bei einem Ort der Art Unterkunft). Jeder Tag beginnt und endet dort.
+- **Karte und Wege:** OpenStreetMap mit nummerierten Wegmarken und dem Weg des Tages entlang echter Wege. Abschnitte bis 25 Minuten geht ihr zu Fuß; längere plant die App mit Bus und Bahn, wenn das deutlich schneller ist, mit Linie, Dauer und Umstiegen. Jeder Abschnitt lässt sich antippen und auf „Zu Fuß“ oder „Öffis“ festlegen. Alternativ die ganze Reise mit Rad oder Auto.
+- **Spaziergänge:** Claude kann den Weg zwischen zwei Stopps als Spaziergang vorschlagen („am Flussufer entlang“); er erscheint grün in Liste und Karte.
+- **Wetter:** Vorhersage je Tag (ab etwa 16 Tagen vorher), davor die Werte derselben Tage aus den letzten drei Jahren. Claude berücksichtigt die Vorhersage bei Vorschlägen. Bei wahrscheinlichem Regen bietet die App „Tage umplanen“ an: Claude tauscht Orte drinnen und draußen zwischen den Tagen, mit „Rückgängig“.
+- **Übergabe:** Jeder Ort, jeder Abschnitt und jede Tagesroute öffnet sich mit einem Tipp in Apple Karten oder Google Maps, die Route mit allen Zwischenstopps, ein Öffi-Abschnitt als ÖPNV-Verbindung.
 - **Ortsinfos:** Kurzbeschreibung, Geschichte und Wissenswertes aus dem Wikipedia-Artikel des Orts (von Claude zusammengefasst, Quelle verlinkt), dazu Adresse, Öffnungszeiten, Website und Telefon aus OpenStreetMap. Ohne Artikel bleibt die Beschreibung leer.
 - **Filter:** Art (Sehenswürdigkeit, Museum, Restaurant, Café, Bar …) und Mahlzeit (Frühstück, Mittagessen, Abendessen) frei kombinierbar; wirkt auf Karte und Liste. „Getrennt“ zeigt eine eigene Liste je Art und Mahlzeit.
 - **Gruppe:** Konten mit Name und Passwort, Einladung per Link, „Dafür“-Stimmen und eine gemeinsame Notiz je Ort. Änderungen der anderen erscheinen nach spätestens 20 Sekunden.
@@ -28,7 +33,7 @@ Was bewusst noch fehlt, steht in [ROADMAP.md](ROADMAP.md), die Begründungen der
 
 Bei jedem Push auf `main` baut GitHub Actions ein Docker-Image und legt es unter `ghcr.io/qtmo0/reiseplaner` ab. Unraid lädt nur dieses fertige Image. Der Weg ist derselbe wie beim Essen-Tracker.
 
-**1. Einmalig: Unraid bei GitHub anmelden** (falls vom Essen-Tracker noch nicht geschehen). Repo und Image sind privat. Auf GitHub unter *Settings → Developer settings → Personal access tokens → Tokens (classic)* einen Token mit `read:packages` (und `repo` fürs Klonen) erzeugen, dann im Unraid-Terminal:
+**1. Einmalig: Unraid bei GitHub anmelden** (falls vom Essen-Tracker noch nicht geschehen). Das Repo ist öffentlich, das Image nicht. Auf GitHub unter *Settings → Developer settings → Personal access tokens → Tokens (classic)* einen Token mit `read:packages` erzeugen, dann im Unraid-Terminal:
 
 ```bash
 docker login ghcr.io -u qtmo0
@@ -95,6 +100,8 @@ Auf dem iPhone in Safari: **Teilen → Zum Home-Bildschirm**.
 
 - **Claude:** ein Aufruf je Vorschlagsrunde (einige Cent) und einer je Ortstext beim Annehmen oder ersten Öffnen eines Orts (grob 2–3 Cent mit `claude-opus-5-5`). Eine Reise mit 30 Orten kostet damit etwa einen Euro. Alles wird gespeichert und nie doppelt abgefragt. Günstiger: `CLAUDE_MODEL=claude-sonnet-5-5`.
 - **OpenStreetMap-Dienste** sind kostenlos, aber für sparsame Nutzung gedacht. Die App fragt Nominatim höchstens einmal pro Sekunde, speichert jede Antwort und jede Route in der Datenbank und nennt die Quellen auf der Karte. `APP_CONTACT` in der `.env` setzt eine Kontaktadresse in die Abfragen, wie es die Betreiber wünschen.
+- **Transitous** (Bus und Bahn) wird von Freiwilligen betrieben und erlaubt die Nutzung nur für nicht kommerzielle, quelloffene Projekte mit wenigen Anfragen. Deshalb ist dieses Repo öffentlich und MIT-lizenziert. Die App nennt sich in jeder Anfrage mit Kontakt (`APP_CONTACT`, sonst die Adresse dieses Repos), speichert Verbindungen zwei Wochen und stellt höchstens 300 Anfragen am Tag. Wo Transitous keine Fahrplandaten hat, bleibt der Abschnitt als „Öffis“ markiert und die Karten-App zeigt die Verbindung. Quellen der Fahrplandaten: [transitous.org/sources](https://transitous.org/sources/).
+- **Open-Meteo** (Wetter) ist für nicht kommerzielle Nutzung frei; die Vorhersage wird drei Stunden zwischengespeichert.
 
 ## Lokal ohne Docker starten
 
@@ -118,6 +125,6 @@ docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 | `.github/workflows/docker.yml` | Baut bei jedem Push das Image und lädt es nach ghcr.io |
 | `app/main.py` | REST-API: Konten, Reisen, Orte, Vorschlags-Job, Ortstexte |
 | `app/ai.py` | Aufrufe der Claude API mit festem JSON-Schema |
-| `app/geo.py` | Nominatim, Routing, Wikipedia und Wikidata, jeweils mit Cache |
+| `app/geo.py` | Nominatim, Routing, Transitous, Open-Meteo, Wikipedia und Wikidata, jeweils mit Cache |
 | `app/db.py` | SQLite-Schema und Migrationen |
 | `app/static/` | Frontend als PWA (HTML, CSS, JS ohne Build-Schritt, Leaflet liegt bei) |

@@ -7,7 +7,8 @@ const KINDS = {
 };
 const MEALS = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" };
 const FOOD = ["restaurant", "cafe", "bar"];
-const MODES = { foot: "zu Fuß", bike: "mit dem Rad", car: "mit dem Auto" };
+const MODES = { foot: "zu Fuß und mit Öffis", bike: "mit dem Rad", car: "mit dem Auto" };
+const WEEKDAYS = ["Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag"];
 const PEEK = 148; // visible height of the collapsed sheet on phones
 
 const ICON = {
@@ -23,6 +24,13 @@ const ICON = {
   thumb: '<svg viewBox="0 0 24 24"><path d="M7 11v9H4v-9zM7 11l4-8c1.7 0 2.6 1.2 2.3 2.8L12.7 9H18a2 2 0 0 1 2 2.4l-1.3 6.9A2 2 0 0 1 16.700 20H7"/></svg>',
   locate: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.5"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>',
   layers: '<svg viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5zM3 13l9 5 9-5"/></svg>',
+  bed: '<svg viewBox="0 0 24 24"><path d="M3 18v-9M3 14h18v4M21 14v-2a3 3 0 0 0-3-3h-7v5M7 11.500a1.500 1.500 0 1 0 0-.010"/></svg>',
+  walk: '<svg viewBox="0 0 24 24"><circle cx="13" cy="4.500" r="1.500"/><path d="M9 21l2.500-6-2-2.500 1-5 3 3 3 1M7 12l1.500-4 3.500-1M13 15.500l2 5.500"/></svg>',
+  bus: '<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="13" rx="2"/><path d="M5 11h14M8 17v2.500M16 17v2.500M8.500 14h.010M15.500 14h.010"/></svg>',
+  tree: '<svg viewBox="0 0 24 24"><path d="M12 21v-7M12 14a5 5 0 0 1-4.500-7.200A4.500 4.500 0 0 1 16.500 6.800 5 5 0 0 1 12 14zM9 21h6"/></svg>',
+  sun: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.600 5.600l1.400 1.400M17 17l1.400 1.400M5.600 18.400L7 17M17 7l1.400-1.400"/></svg>',
+  cloud: '<svg viewBox="0 0 24 24"><path d="M7 18a4 4 0 0 1-.500-7.970A5.500 5.500 0 0 1 17.200 9.050 4.500 4.500 0 0 1 17 18z"/></svg>',
+  rain: '<svg viewBox="0 0 24 24"><path d="M7 15a4 4 0 0 1-.500-7.970A5.500 5.500 0 0 1 17.200 6.050 4.500 4.500 0 0 1 17 15M8.500 18l-1 2.500M12.500 18l-1 2.500M16.500 18l-1 2.500"/></svg>',
   out: '<svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>',
 };
 
@@ -106,8 +114,8 @@ function fmtHours(raw) {
 }
 
 // Google's encoded polyline format, as returned by OSRM
-function decodePolyline(str) {
-  const out = [];
+function decodePolyline(str, precision = 5) {
+  const out = [], scale = 10 ** precision;
   let i = 0, lat = 0, lon = 0;
   while (i < str.length) {
     for (const which of [0, 1]) {
@@ -116,7 +124,7 @@ function decodePolyline(str) {
       const delta = result & 1 ? ~(result >> 1) : result >> 1;
       if (which === 0) lat += delta; else lon += delta;
     }
-    out.push([lat / 1e5, lon / 1e5]);
+    out.push([lat / scale, lon / scale]);
   }
   return out;
 }
@@ -155,7 +163,14 @@ function routeLinks(stops, mode) {
 
 // ---------- Selectors over the open trip ----------
 
-const active = () => S.data.places.filter((p) => p.status !== "rejected");
+const hotel = () => S.data.places.find((p) => p.id === S.data.trip.hotel_id) || null;
+const active = () => S.data.places.filter((p) => p.status !== "rejected" && p.id !== S.data.trip.hotel_id);
+// The points a day's legs connect: hotel, stops, hotel (or just the stops without a hotel)
+function dayPoints(day) {
+  const stops = dayStops(day), h = hotel();
+  return h && stops.length ? [h, ...stops, h] : stops;
+}
+const weatherIcon = (code) => (code <= 1 ? ICON.sun : code <= 48 ? ICON.cloud : ICON.rain);
 const dayStops = (day) => active().filter((p) => p.day === day);
 const matches = (p) => !S.filters.size || S.filters.has("k:" + p.kind) || p.meals.some((m) => S.filters.has("m:" + m));
 const inView = (p) => S.view === "all" || (S.view === "ideas" ? p.day == null : p.day === S.view);
@@ -429,8 +444,8 @@ function renderPanel() {
     </div>
     <div class="chips days" role="tablist">
       <button class="chip ${S.view === "all" ? "on" : ""}" data-view="all">Alle</button>
-      ${Array.from({ length: trip.days }, (_, i) => `<button class="chip ${S.view === i + 1 ? "on" : ""}" data-view="${i + 1}">
-        <b>Tag ${i + 1}</b> ${fmtDay(dayDate(trip, i + 1))}</button>`).join("")}
+      ${Array.from({ length: trip.days }, (_, i) => { const w = S.data.weather.days[i + 1]; return `<button class="chip ${S.view === i + 1 ? "on" : ""}" data-view="${i + 1}">
+        <b>Tag ${i + 1}</b> ${fmtDay(dayDate(trip, i + 1))}${w ? ` ${weatherIcon(w.code)}${w.tmax}°` : ""}</button>`; }).join("")}
       <button class="chip ${S.view === "ideas" ? "on" : ""}" data-view="ideas">Ideen</button>
     </div>`;
 
@@ -451,6 +466,8 @@ function renderPanel() {
     </div>` : "";
 
   const job = trip.job;
+  const replanBox = trip.replan ? `<div class="notice stack"><span><b>Umgeplant.</b> ${esc(trip.replan)}</span>
+      <span><button class="link" data-act="replan-undo">Rückgängig</button><button class="link" data-act="replan-keep">Behalten</button></span></div>` : "";
   const jobBox = job.state === "running" ? `<div class="notice"><span class="spinner"></span>${esc(job.msg)}</div>`
     : job.state === "error" ? `<div class="notice error">${esc(job.msg)}<button class="link" data-act="dismiss-job">OK</button></div>` : "";
 
@@ -461,8 +478,19 @@ function renderPanel() {
   let summary = "";
   if (day && stops.length) {
     summary = `${stops.length} ${stops.length === 1 ? "Stopp" : "Stopps"}`
-      + (route ? ` · ${fmtDist(route.distance)} · ${fmtDur(route.duration)} ${MODES[trip.mode]}` : stops.length > 1 ? " · Luftlinie, Routing gerade nicht erreichbar" : "");
+      + (route ? ` · ${route.open ? "mindestens " : ""}${fmtDur(route.duration)} unterwegs` : "");
   } else if (!day) summary = `${list.length} ${list.length === 1 ? "Ort" : "Orte"}`;
+
+  // Weather: forecast for the chosen day, or what the dates are usually like while there is no forecast yet
+  const W = S.data.weather, w = day && W.days[day];
+  let weather = "";
+  if (w) {
+    weather = `<div class="weather">${weatherIcon(w.code)}<span>${w.tmin} bis ${w.tmax}° · Regen ${w.pop} %${w.rain_from != null ? `, ab etwa ${w.rain_from} Uhr` : ""}</span></div>`;
+    if (w.pop >= 60 && stops.length) weather += `<div class="notice error"><span>An diesem Tag regnet es wahrscheinlich.</span>${S.ai && job.state !== "running" ? '<button class="link" data-act="replan">Tage umplanen</button>' : ""}</div>`;
+  } else if (W.usual && (day || S.view === "all")) {
+    const wet = Math.round(W.usual.wet * 10);
+    weather = `<div class="weather">${ICON.cloud}<span>Noch keine Vorhersage (kommt etwa 16 Tage vorher). In den letzten ${W.usual.years} Jahren waren es um diese Zeit ${W.usual.tmin} bis ${W.usual.tmax}°, Regen an ${wet < 1 ? "kaum einem Tag" : `etwa ${wet} von 10 Tagen`}.</span></div>`;
+  }
   const actions = `<div class="actions">
       <button class="btn primary" data-act="suggest" ${job.state === "running" ? "disabled" : ""}>${ICON.spark} Vorschläge</button>
       <button class="btn" data-act="add">${ICON.plus} Ort</button>
@@ -481,8 +509,13 @@ function renderPanel() {
       .filter(([key, , items]) => items.length && (!S.filters.size || S.filters.has(key)));
     body = groups.map(([, label, items]) => `<h3 class="group">${label} <span>${items.length}</span></h3><ul class="places">${items.map((p) => placeRow(p)).join("")}</ul>`).join("");
   } else {
-    const legs = day && route && !S.filters.size ? route.legs : null;
-    body = `<ul class="places" id="sort-list">${list.map((p, i) => placeRow(p, legs && i ? legs[i - 1] : null)).join("")}</ul>`;
+    // Leg i runs from point i to point i + 1; with a hotel, point 0 and the last point are the hotel
+    const legs = day && route && !S.filters.size ? route.legs : null, h = hotel();
+    const off = legs && h && legs.length === list.length + 1 ? 0 : -1;
+    const hotelRow = off === 0 ? `<div class="hotel-row"><button class="open" data-act="open-hotel"><span class="badge kind-lodging">${ICON.bed}</span>
+      <span class="txt"><b>${esc(h.name)}</b><small>Unterkunft</small></span></button></div>` : "";
+    body = hotelRow + `<ul class="places" id="sort-list">${list.map((p, i) => placeRow(p, legs && legs[i + off], i + off)).join("")}</ul>`
+      + (off === 0 ? legRow(legs[legs.length - 1], legs.length - 1) + hotelRow : "");
   }
   const rejected = places.filter((p) => p.status === "rejected");
   if (S.view === "all" && rejected.length) {
@@ -490,11 +523,27 @@ function renderPanel() {
     if (S.showRejected) body += `<ul class="places rejected">${rejected.map((p) => placeRow(p)).join("")}</ul>`;
   }
   const scroll = $("#panel-body").scrollTop;
-  $("#panel-body").innerHTML = filterRow + jobBox + actions + body;
+  $("#panel-body").innerHTML = filterRow + jobBox + replanBox + actions + weather + body;
   $("#panel-body").scrollTop = scroll;
 }
 
-function placeRow(p, leg) {
+// The way between two stops, shown between their rows; a tap opens the details
+function legRow(leg, index) {
+  if (!leg) return "";
+  let cls = "", text;
+  const len = leg.duration == null ? "" : `${fmtDur(leg.duration)}${leg.distance ? " · " + fmtDist(leg.distance) : ""}`;
+  if (leg.mode === "transit") {
+    cls = "transit";
+    text = leg.fallback ? `${ICON.bus}<span>Öffis · Verbindung in der Karten-App</span>`
+      : `${ICON.bus}<span>${leg.transit.lines.map((l) => esc(`${l.kind} ${l.name}`.trim())).join(" → ")} · ${len}</span>`;
+  } else if (leg.scenic) {
+    cls = "scenic";
+    text = `${ICON.tree}<span>Spaziergang ${esc(leg.label)} · ${len}</span>`;
+  } else text = `${leg.mode === "walk" ? ICON.walk : ""}<span>${len || "Strecke nicht berechenbar"}</span>`;
+  return `<button class="leg ${cls}" data-act="leg" data-leg="${index}">${text}</button>`;
+}
+
+function placeRow(p, leg, legIndex) {
   const n = stopNumber(p);
   const tags = [KINDS[p.kind], ...p.meals.map((m) => MEALS[m])];
   if ((S.view === "all" || S.grouped) && p.day) tags.push("Tag " + p.day);
@@ -503,7 +552,7 @@ function placeRow(p, leg) {
     : p.status === "rejected" ? `<button class="link" data-act="restore">Zurückholen</button>`
     : sortable() ? `<span class="grip" aria-label="Verschieben">${ICON.grip}</span>` : "";
   return `<li class="place ${p.status} ${S.sel === p.id ? "sel" : ""}" data-id="${p.id}">
-    ${leg ? `<div class="leg">${fmtDur(leg.duration)} · ${fmtDist(leg.distance)}</div>` : ""}
+    ${legRow(leg, legIndex)}
     <div class="row"><button class="open" data-act="open">
       <span class="badge kind-${p.kind}">${n}</span>
       <span class="txt"><b>${esc(p.name)}</b><small>${tags.join(" · ")}${p.status === "suggested" ? " · Vorschlag" : ""}${p.votes.length ? ` · 👍 ${p.votes.length}` : ""}</small></span>
@@ -523,7 +572,7 @@ function renderDetail() {
   if (el.contains(document.activeElement) && ["TEXTAREA", "INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
   const { trip } = S.data, info = p.info || {}, links = placeLinks(p), mine = p.votes.includes(S.me.id);
   $("#detail-head").innerHTML = `<div class="head-row">
-      <div class="head-title"><h1>${esc(p.name)}</h1><p>${[KINDS[p.kind], ...p.meals.map((m) => MEALS[m])].join(" · ")}${p.day ? ` · Tag ${p.day}, Stopp ${stopNumber(p)}` : ""}</p></div>
+      <div class="head-title"><h1>${esc(p.name)}</h1><p>${p.id === trip.hotel_id ? "Unterkunft der Reise, Start und Ziel jedes Tages" : [KINDS[p.kind], ...p.meals.map((m) => MEALS[m])].join(" · ") + (p.day ? ` · Tag ${p.day}, Stopp ${stopNumber(p)}` : "")}</p></div>
       <button class="icon-btn" data-act="close-detail" aria-label="Schließen">${ICON.close}</button></div>`;
 
   const sections = [];
@@ -533,6 +582,8 @@ function renderDetail() {
       <a class="btn" href="${links.apple}" target="_blank" rel="noopener">Apple Karten</a>
       <a class="btn" href="${links.google}" target="_blank" rel="noopener">Google Maps</a>
       <button class="btn vote ${mine ? "on" : ""}" data-act="vote" aria-pressed="${mine}">${ICON.thumb} ${p.votes.length || ""}</button></div>`);
+  if (p.id === trip.hotel_id) sections.push('<div class="decide"><button class="btn" data-act="unset-hotel">Nicht mehr als Unterkunft</button></div>');
+  else if (p.kind === "lodging") sections.push('<div class="decide"><button class="btn" data-act="set-hotel">Als Unterkunft der Reise festlegen</button></div>');
   if (p.votes.length) sections.push(`<p class="muted small">Dafür: ${p.votes.map((id) => esc(S.data.members.find((m) => m.id === id)?.name || "?")).join(", ")}</p>`);
   if (!p.verified) sections.push('<p class="warn">Dieser Ort wurde in OpenStreetMap nicht gefunden. Die Position ist ungefähr; prüft vor dem Losgehen, ob es ihn noch gibt.</p>');
   if (info.image) sections.push(`<a class="photo" href="${esc(info.image_page || info.wiki_url)}" target="_blank" rel="noopener"><img src="${esc(info.image)}" alt="" crossorigin="anonymous" loading="lazy"><span>Bild: Wikimedia Commons</span></a>`);
@@ -590,13 +641,24 @@ function renderMap(fit) {
   const { trip, routes } = S.data, bounds = [];
   const days = S.view === "all" ? Array.from({ length: trip.days }, (_, i) => i + 1) : typeof S.view === "number" ? [S.view] : [];
   for (const d of days) {
-    const stops = dayStops(d);
-    if (stops.length < 2) continue;
-    const line = routes[d] ? decodePolyline(routes[d].geometry) : stops.map((p) => [p.lat, p.lon]);
+    if (!routes[d]) continue;
     const dim = S.view === "all" ? 0.55 : 1;
-    L.polyline(line, { className: "route-case", weight: 8, opacity: dim, interactive: false }).addTo(mapLayer);
-    L.polyline(line, { className: "route-line", weight: 4.5, opacity: dim, dashArray: routes[d] ? null : "2 10", interactive: false }).addTo(mapLayer);
-    if (typeof S.view === "number") bounds.push(...line);
+    for (const leg of routes[d].legs) {
+      for (const seg of leg.segs) {
+        const line = seg.pts || decodePolyline(seg.g, seg.p);
+        // Rides are dashed, suggested strolls green, a straight line stands for a connection without known path
+        const cls = seg.m === "t" ? "route-transit" : leg.scenic ? "route-scenic" : "route-line";
+        L.polyline(line, { className: "route-case", weight: 8, opacity: dim, interactive: false }).addTo(mapLayer);
+        L.polyline(line, { className: cls, weight: 4.5, opacity: dim, dashArray: seg.pts ? "2 10" : seg.m === "t" ? "10 8" : null, interactive: false }).addTo(mapLayer);
+        if (typeof S.view === "number") bounds.push(...line);
+      }
+    }
+  }
+  const h = hotel();
+  if (h && S.view !== "ideas") {
+    const icon = L.divIcon({ className: "", iconSize: [34, 34], iconAnchor: [17, 17], html: `<div class="pin kind-lodging hotel ${S.sel === h.id ? "sel" : ""}">${ICON.bed}</div>` });
+    L.marker([h.lat, h.lon], { icon, title: h.name, zIndexOffset: 500 }).on("click", () => select(h.id)).addTo(mapLayer);
+    if (typeof S.view === "number" && dayStops(S.view).length) bounds.push([h.lat, h.lon]);
   }
   for (const p of visible()) {
     const n = stopNumber(p);
@@ -746,6 +808,13 @@ function onTripClick(e) {
   const id = +btn.closest("[data-id]")?.dataset.id || S.sel;
   const call = (path, method, body, fit) => busy(btn, async () => update(await api(path, { method, body }), fit));
   if (act === "open") select(id);
+  else if (act === "open-hotel") select(trip.hotel_id);
+  else if (act === "leg") legDialog(+btn.dataset.leg);
+  else if (act === "replan") call(`/trips/${trip.id}/replan`, "POST");
+  else if (act === "replan-undo") call(`/trips/${trip.id}/replan/undo`, "POST", null, true);
+  else if (act === "replan-keep") call(`/trips/${trip.id}/replan/keep`, "POST");
+  else if (act === "set-hotel") call(`/trips/${trip.id}/hotel`, "PUT", { place_id: id }, true);
+  else if (act === "unset-hotel") call(`/trips/${trip.id}/hotel`, "PUT", {}, true);
   else if (act === "close-detail") select(null);
   else if (act === "group") { S.grouped = !S.grouped; renderPanel(); }
   else if (act === "toggle-rejected") { S.showRejected = !S.showRejected; renderPanel(); }
@@ -829,13 +898,58 @@ function addPlaceDialog() {
   });
 }
 
+// One leg: what it is, the connection if it is a ride, how to change it, and the handover for just this leg
+function legDialog(index) {
+  const day = S.view, trip = S.data.trip, leg = S.data.routes[day]?.legs[index], pts = dayPoints(day);
+  const a = pts[index], b = pts[index + 1];
+  if (!leg || !a || !b) return;
+  const origin = a.id === trip.hotel_id ? null : a; // the stop that carries the preference for this leg
+  const m = leg.mode === "transit" ? ["transit", "transit"] : { walk: ["walking", "walking"], bike: ["cycling", "bicycling"], car: ["driving", "driving"] }[leg.mode];
+  const apple = `https://maps.apple.com/directions?source=${ll(a)}&destination=${ll(b)}&mode=${m[0]}`;
+  const google = `https://www.google.com/maps/dir/?api=1&origin=${ll(a)}&destination=${ll(b)}&travelmode=${m[1]}`;
+  let info;
+  if (leg.mode === "transit" && leg.fallback) info = "<p>Für diesen Abschnitt liegen keine Fahrplandaten vor. Die Verbindung zeigt dir die Karten-App.</p>";
+  else if (leg.mode === "transit") {
+    info = `<p><b>${fmtDur(leg.duration)}</b>, davon ${fmtDur(leg.transit.walk)} zu Fuß${leg.transit.transfers ? `, ${leg.transit.transfers} ${leg.transit.transfers === 1 ? "Umstieg" : "Umstiege"}` : ""}</p>
+      <ol class="rides">${leg.transit.lines.map((l) => `<li><b>${esc(`${l.kind} ${l.name}`.trim())}</b>${l.headsign ? ` Richtung ${esc(l.headsign)}` : ""}<small>${esc(l.from)} → ${esc(l.to)} · ${fmtDur(l.duration)}</small></li>`).join("")}</ol>
+      <p class="muted small">Verbindung an einem typischen ${WEEKDAYS[leg.weekday]}; die genaue Abfahrt zeigt die Karten-App. Fahrplandaten: <a href="https://transitous.org/sources/" target="_blank" rel="noopener">Transitous</a></p>`;
+  } else {
+    info = `<p><b>${leg.duration == null ? "Strecke nicht berechenbar" : `${fmtDur(leg.duration)} · ${fmtDist(leg.distance)}`}</b> ${leg.mode === "walk" ? "zu Fuß" : MODES[leg.mode]}</p>`
+      + (leg.scenic ? `<p>Spaziergang ${esc(leg.label)}</p><p class="muted small">Vorschlag von Claude; die eingezeichnete Strecke ist der kürzeste Fußweg${" "}und kann vom beschriebenen Weg abweichen.</p>` : "");
+  }
+  const pref = origin?.leg_mode || "auto";
+  const choose = origin && trip.mode === "foot" ? `<label>Diesen Abschnitt</label><div class="seg" id="leg-seg">
+      ${[["auto", "Automatisch"], ["walk", "Zu Fuß"], ["transit", "Öffis"]].map(([k, l]) => `<button type="button" data-pref="${k}" class="${pref === k ? "on" : ""}">${l}</button>`).join("")}</div>
+      <p class="muted small">Automatisch heißt: bis 25 Minuten zu Fuß, darüber mit Öffis, wenn es damit deutlich schneller geht.</p>` : "";
+  modal(`${a.name} → ${b.name}`, `${info}${choose}
+    <div class="handover"><a class="btn primary" href="${apple}" target="_blank" rel="noopener">Apple Karten</a>
+      <a class="btn" href="${google}" target="_blank" rel="noopener">Google Maps</a></div>`, (el, close) => {
+    $("#leg-seg", el)?.addEventListener("click", (e) => {
+      const k = e.target.dataset.pref;
+      if (k && k !== pref) busy(e.target, async () => { update(await api("/places/" + origin.id, { method: "PATCH", body: { leg_mode: k } })); close(); });
+    });
+  });
+}
+
+function hotelDialog() {
+  const trip = S.data.trip;
+  modal("Unterkunft", '<p class="muted small">Jeder Tag beginnt und endet an der Unterkunft.</p><div id="step"></div><p class="muted small">Ortssuche: © OpenStreetMap-Mitwirkende</p>', (el, close) => {
+    searchUI($("#step", el), trip.id, (hit) => busy(null, async () => {
+      const { display, bbox, ...place } = hit;
+      const data = await api(`/trips/${trip.id}/hotel`, { method: "PUT", body: { place } });
+      close();
+      update(data, true);
+    }));
+  });
+}
+
 function routeDialog() {
-  const trip = S.data.trip, stops = dayStops(S.view), parts = routeLinks(stops, trip.mode);
+  const trip = S.data.trip, h = hotel(), stops = [...dayStops(S.view), ...(h ? [h] : [])], parts = routeLinks(stops, trip.mode);
   const label = (p) => (parts.length > 1 ? ` · Stopp ${p.from}–${p.to}` : "");
-  modal(`Route für Tag ${S.view}`, `<p>${stops.length} ${stops.length === 1 ? "Stopp" : "Stopps"} ${MODES[trip.mode]}, Start an deinem Standort.</p>
+  modal(`Route für Tag ${S.view}`, `<p>${stops.length} ${stops.length === 1 ? "Ziel" : "Ziele"}${h ? ", zuletzt die Unterkunft" : ""}. Start ist dein Standort.</p>
     ${parts.map((p) => `<div class="handover"><a class="btn primary" href="${p.apple}" target="_blank" rel="noopener">Apple Karten${label(p)}</a>
       <a class="btn" href="${p.google}" target="_blank" rel="noopener">Google Maps${label(p)}</a></div>`).join("")}
-    <p class="muted small">${parts.length > 1 ? "Beide Apps nehmen nur eine begrenzte Zahl von Stopps pro Route an, deshalb ist der Tag geteilt. " : ""}Die Zwischenstopps werden in der geplanten Reihenfolge übergeben.</p>`);
+    <p class="muted small">${parts.length > 1 ? "Beide Apps nehmen nur eine begrenzte Zahl von Stopps pro Route an, deshalb ist der Tag geteilt. " : ""}Die Zwischenstopps werden in der geplanten Reihenfolge übergeben${trip.mode === "foot" ? ", als Fußweg. Karten-Apps können Öffis nicht über mehrere Stopps planen: Für einen Öffi-Abschnitt tippe ihn in der Liste an" : ""}.</p>`);
 }
 
 function membersDialog() {
@@ -870,12 +984,15 @@ function settingsDialog() {
       <label>Titel<input name="title" value="${esc(trip.title)}" required maxlength="80"></label>
       <div class="two"><label>Von<input name="start" type="date" required value="${trip.start_date}"></label>
       <label>Bis<input name="end" type="date" required value="${trip.end_date}"></label></div>
+      <label>Unterkunft</label>
+      <div class="hotel-set"><span>${hotel() ? esc(hotel().name) : "Noch keine festgelegt"}</span><button type="button" class="link" id="pick-hotel">${hotel() ? "Ändern" : "Festlegen"}</button></div>
       <label>Unterwegs</label>
       <div class="seg" id="mode-seg">${Object.entries(MODES).map(([k, l]) => `<button type="button" data-mode="${k}" class="${trip.mode === k ? "on" : ""}">${l}</button>`).join("")}</div>
-      <p class="muted small">Bestimmt, wie die Tagesroute berechnet und an die Karten-App übergeben wird. Wird die Reise kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
+      <p class="muted small">Bestimmt, wie die Wege zwischen den Stopps berechnet und an die Karten-App übergeben werden. Wird die Reise kürzer, wandern die Orte der gestrichenen Tage zu den Ideen.</p>
       <button class="btn primary" type="submit">Speichern</button></form>
     <button class="link danger" id="leave">${owner ? "Reise löschen" : "Reise verlassen"}</button>`, (el, close) => {
     let mode = trip.mode;
+    $("#pick-hotel", el).onclick = () => { close(); hotelDialog(); };
     $("#mode-seg", el).onclick = (e) => {
       if (!e.target.dataset.mode) return;
       mode = e.target.dataset.mode;

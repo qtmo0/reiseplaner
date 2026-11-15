@@ -205,20 +205,81 @@ def check_dates(start: str, end: str) -> None:
         raise HTTPException(422, f"Eine Reise kann höchstens {MAX_DAYS} Tage dauern.")
 
 
+WALK_LIMIT = 25 * 60  # a longer walk becomes public transport if a clearly faster connection exists
+
+
+def _timetable_slot(trip: dict, day: int, leg: int) -> tuple[date, int]:
+    """Date and hour to look up connections for. Timetables only reach a few weeks ahead, so a trip further
+    away uses the same weekday of the coming week as a typical day."""
+    d = date.fromisoformat(trip["start_date"]) + timedelta(day - 1)
+    today = date.today()
+    if not today <= d <= today + timedelta(6):
+        d = today + timedelta((d.weekday() - today.weekday()) % 7 or 7)
+    return d, min(21, 9 + leg * 3 // 2)
+
+
+def _leg(trip: dict, a: dict, b: dict, origin: dict | None, day: int, index: int) -> dict:
+    """How to get from place a to place b. origin is a when it is a stop (it carries the preference for
+    this leg), None when the leg starts at the hotel."""
+    pa, pb = (a["lat"], a["lon"]), (b["lat"], b["lon"])
+    straight = [{"m": "t", "pts": [pa, pb]}]
+    if trip["mode"] != "foot":
+        r = geo.route([pa, pb], trip["mode"])
+        return {"mode": trip["mode"], "distance": r and r["distance"], "duration": r and r["duration"],
+                "segs": [{"m": "w", "g": r["geometry"], "p": 5}] if r else straight}
+    pref = origin["leg_mode"] if origin else "auto"
+    label = origin["walk_label"] if origin and pref == "walk" else ""
+    via = json.loads(origin["walk_via"]) if label and origin["walk_via"] else None
+    walk = geo.route([pa] + ([tuple(via)] if via else []) + [pb], "foot")
+    if pref == "transit" or (pref == "auto" and (walk is None or walk["duration"] > WALK_LIMIT)):
+        slot, hour = _timetable_slot(trip, day, index)
+        t = geo.transit(pa, pb, slot, hour)
+        if t and (pref == "transit" or walk is None or t["duration"] < walk["duration"] * 0.85):
+            return {"mode": "transit", "distance": None, "duration": t["duration"], "segs": t["segs"], "weekday": slot.weekday(),
+                    "transit": {k: t[k] for k in ("transfers", "walk", "lines")}}
+        if pref == "transit" or walk is None:
+            # No timetable data here: the leg stays marked as public transport, details come from the maps app
+            return {"mode": "transit", "fallback": True, "distance": None, "duration": None, "segs": straight}
+    return {"mode": "walk", "scenic": bool(label), "label": label, "distance": walk["distance"], "duration": walk["duration"],
+            "segs": [{"m": "w", "g": walk["geometry"], "p": 5}]}
+
+
 def day_routes(trip: dict, places: list[dict]) -> dict:
-    """Route per day through all stops that are not rejected, in list order."""
+    """Per day: the legs from the hotel through all stops that are not rejected and back to the hotel."""
+    hotel = next((p for p in places if p["id"] == trip["hotel_id"]), None)
     routes = {}
     for day in range(1, day_count(trip) + 1):
-        stops = [(p["lat"], p["lon"]) for p in places if p["day"] == day and p["status"] != "rejected"]
-        route = geo.route(stops, trip["mode"])
-        if route:
-            routes[str(day)] = route
+        stops = [p for p in places if p["day"] == day and p["status"] != "rejected" and p is not hotel]
+        points = [hotel, *stops, hotel] if hotel and stops else stops
+        if len(points) < 2:
+            continue
+        legs = [_leg(trip, a, b, None if a is hotel else a, day, i) for i, (a, b) in enumerate(zip(points, points[1:]))]
+        routes[str(day)] = {
+            "legs": legs,
+            "distance": sum(leg["distance"] or 0 for leg in legs),
+            "duration": sum(leg["duration"] or 0 for leg in legs),
+            "open": sum(1 for leg in legs if leg["duration"] is None),  # legs without a known duration
+        }
     return routes
+
+
+def trip_weather(trip: dict) -> dict:
+    """Forecast per trip day where one exists yet, plus what the dates were like in past years."""
+    forecast = geo.weather(trip["lat"], trip["lon"])
+    start = date.fromisoformat(trip["start_date"])
+    days = {str(d + 1): forecast[(start + timedelta(d)).isoformat()] for d in range(day_count(trip))
+            if (start + timedelta(d)).isoformat() in forecast}
+    out = {"days": days}
+    if len(days) < day_count(trip):
+        out["usual"] = geo.climate(trip["lat"], trip["lon"], trip["start_date"], trip["end_date"])
+    return out
 
 
 def trip_payload(trip_id: int, user: dict) -> dict:
     trip = member_trip(trip_id, user)
     places = db.q("SELECT * FROM places WHERE trip_id=? ORDER BY day IS NULL, day, pos, id", (trip_id,))
+    trip["days"] = day_count(trip)
+    routes = day_routes(trip, places)
     votes: dict[int, list[int]] = {}
     for v in db.q("SELECT v.place_id, v.user_id FROM votes v JOIN places p ON p.id=v.place_id WHERE p.trip_id=?", (trip_id,)):
         votes.setdefault(v["place_id"], []).append(v["user_id"])
@@ -226,16 +287,17 @@ def trip_payload(trip_id: int, user: dict) -> dict:
         p["meals"] = json.loads(p["meals"])
         p["info"] = json.loads(p["info"])
         p["votes"] = votes.get(p["id"], [])
-        del p["wiki_hint"]
+        del p["wiki_hint"], p["walk_via"]
     trip["bbox"] = json.loads(trip["bbox"])
     trip["job"] = json.loads(trip["job"])
-    trip["days"] = day_count(trip)
+    trip["replan"] = json.loads(trip["replan"]).get("msg", "")
     return {
         "trip": trip,
         "members": db.q("SELECT u.id, u.name FROM trip_members m JOIN users u ON u.id=m.user_id WHERE m.trip_id=? ORDER BY u.name",
                         (trip_id,)),
         "places": places,
-        "routes": day_routes(trip, places),
+        "routes": routes,
+        "weather": trip_weather(trip),
     }
 
 
@@ -353,6 +415,7 @@ class PlacePatch(BaseModel):
     clear_day: bool = False
     status: str | None = None
     note: str | None = Field(None, max_length=2000)
+    leg_mode: str | None = None  # way to the next stop: auto|walk|transit
 
 
 class OrderIn(BaseModel):
@@ -370,12 +433,13 @@ def insert_place(trip_id: int, user_id: int | None, f: dict) -> int:
         pos = con.execute("SELECT COALESCE(MAX(pos),0)+1 FROM places WHERE trip_id=? AND day IS ?", (trip_id, f.get("day"))).fetchone()[0]
         return con.execute(
             "INSERT INTO places (trip_id, name, kind, meals, lat, lon, status, day, pos, source, reason, verified, osm_ref, address, "
-            "opening_hours, website, phone, wikidata, wikipedia, wiki_hint, created_by, created_at) "
-            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            "opening_hours, website, phone, wikidata, wikipedia, wiki_hint, leg_mode, walk_label, walk_via, created_by, created_at) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             (trip_id, f["name"][:120], kind, clean_meals(kind, f.get("meals", [])), f["lat"], f["lon"], f.get("status", "accepted"),
              f.get("day"), pos, f.get("source", "manual"), f.get("reason", ""), int(f.get("verified", 0)), f.get("osm_ref", ""),
              f.get("address", ""), f.get("opening_hours", ""), f.get("website", ""), f.get("phone", ""), f.get("wikidata", ""),
-             f.get("wikipedia", ""), f.get("wiki_hint", ""), user_id, time.time())).lastrowid
+             f.get("wikipedia", ""), f.get("wiki_hint", ""), "walk" if f.get("walk_label") else "auto", f.get("walk_label", ""),
+             f.get("walk_via", ""), user_id, time.time())).lastrowid
 
 
 @app.get("/api/geocode")
@@ -418,9 +482,13 @@ def patch_place(place_id: int, body: PlacePatch, user: dict = Depends(require_us
         if new_day != day:
             day = new_day
             pos = db.one("SELECT COALESCE(MAX(pos),0)+1 AS p FROM places WHERE trip_id=? AND day IS ?", (trip["id"], day))["p"]
-    db.run("UPDATE places SET name=?, kind=?, meals=?, status=?, day=?, pos=?, note=? WHERE id=?",
+    leg_mode, walk_label = place["leg_mode"], place["walk_label"]
+    if body.leg_mode in ("auto", "walk", "transit"):
+        # Choosing a mode by hand drops a stroll suggested by the AI
+        leg_mode, walk_label = body.leg_mode, ""
+    db.run("UPDATE places SET name=?, kind=?, meals=?, status=?, day=?, pos=?, note=?, leg_mode=?, walk_label=? WHERE id=?",
            (body.name.strip() if body.name else place["name"], kind, meals, status, day, pos,
-            body.note if body.note is not None else place["note"], place_id))
+            body.note if body.note is not None else place["note"], leg_mode, walk_label, place_id))
     if status == "accepted" and place["info_status"] == "none":
         enqueue_info(place_id)
     touch(trip["id"])
@@ -431,6 +499,7 @@ def patch_place(place_id: int, body: PlacePatch, user: dict = Depends(require_us
 def delete_place(place_id: int, user: dict = Depends(require_user)):
     place = member_place(place_id, user)
     db.run("DELETE FROM places WHERE id=?", (place_id,))
+    db.run("UPDATE trips SET hotel_id=NULL WHERE hotel_id=?", (place_id,))
     touch(place["trip_id"])
     return trip_payload(place["trip_id"], user)
 
@@ -477,6 +546,96 @@ def accept_all(trip_id: int, day: int | None = None, user: dict = Depends(requir
         if r["info_status"] == "none":
             enqueue_info(r["id"])
     touch(trip_id)
+    return trip_payload(trip_id, user)
+
+
+# ---------- Hotel ----------
+
+class HotelIn(BaseModel):
+    place_id: int | None = None   # an existing place of the trip ...
+    place: PlaceIn | None = None  # ... or a search result to add
+
+
+@app.put("/api/trips/{trip_id}/hotel")
+def set_hotel(trip_id: int, body: HotelIn, user: dict = Depends(require_user)):
+    """The place every day starts and ends at. Empty body removes it."""
+    member_trip(trip_id, user)
+    hotel_id = None
+    if body.place:
+        fields = body.place.model_dump()
+        fields.update(kind="lodging", day=None, verified=bool(body.place.osm_ref))
+        hotel_id = insert_place(trip_id, user["id"], fields)
+        enqueue_info(hotel_id)
+    elif body.place_id:
+        hotel_id = member_place(body.place_id, user)["id"]
+        db.run("UPDATE places SET day=NULL, status='accepted' WHERE id=? AND trip_id=?", (hotel_id, trip_id))
+    db.run("UPDATE trips SET hotel_id=?, updated_at=? WHERE id=?", (hotel_id, time.time(), trip_id))
+    return trip_payload(trip_id, user)
+
+
+# ---------- Replanning around the weather ----------
+
+def _planned(trip: dict) -> list[dict]:
+    return db.q("SELECT id, name, kind, meals, day, pos FROM places WHERE trip_id=? AND day IS NOT NULL AND status!='rejected' "
+                "AND id IS NOT ? ORDER BY day, pos, id", (trip["id"], trip["hotel_id"]))
+
+
+def _weather_lines(trip: dict) -> list[str]:
+    """One line per trip day with a forecast, for the AI."""
+    start = date.fromisoformat(trip["start_date"])
+    lines = []
+    for day, w in sorted(trip_weather(trip)["days"].items(), key=lambda kv: int(kv[0])):
+        d = start + timedelta(int(day) - 1)
+        rain = f", Regen wahrscheinlich ab etwa {w['rain_from']} Uhr" if w["rain_from"] is not None else ""
+        lines.append(f"Tag {day} ({WEEKDAYS[d.weekday()]}): {w['tmin']} bis {w['tmax']} Grad, Regenwahrscheinlichkeit {w['pop']} %{rain}")
+    return lines
+
+
+def replan_job(trip_id: int) -> None:
+    try:
+        trip = db.one("SELECT * FROM trips WHERE id=?", (trip_id,))
+        before = _planned(trip)
+        result = ai.replan(trip["destination"], day_count(trip), _weather_lines(trip), before)
+        known = {p["id"]: p for p in before}
+        days = day_count(trip)
+        moves = [(it["day"], it["order"], it["id"]) for it in result["plan"] if it["id"] in known and 1 <= it["day"] <= days]
+        with db.tx() as con:
+            con.executemany("UPDATE places SET day=?, pos=? WHERE id=?", moves)
+            con.execute("UPDATE trips SET replan=? WHERE id=?", (json.dumps(
+                {"msg": result["summary"].strip(), "prev": [[p["id"], p["day"], p["pos"]] for p in before]}, ensure_ascii=False), trip_id))
+        day_routes(trip, db.q("SELECT * FROM places WHERE trip_id=? ORDER BY day, pos, id", (trip_id,)))
+        set_job(trip_id, "idle")
+    except ai.AIError as exc:
+        set_job(trip_id, "error", str(exc))
+    except Exception:
+        log.exception("replan job failed")
+        set_job(trip_id, "error", "Das Umplanen hat nicht geklappt. Versuch es noch einmal.")
+
+
+@app.post("/api/trips/{trip_id}/replan")
+def replan(trip_id: int, user: dict = Depends(require_user)):
+    """Let the AI move the planned places between days and reorder them to suit the forecast."""
+    trip = member_trip(trip_id, user)
+    if not ai.enabled():
+        raise HTTPException(400, "Umplanen braucht einen Claude-API-Schlüssel.")
+    if json.loads(trip["job"]).get("state") == "running":
+        raise HTTPException(409, "Es läuft gerade schon eine Planung.")
+    if not _weather_lines(trip):
+        raise HTTPException(400, "Für diese Reise gibt es noch keine Wettervorhersage.")
+    set_job(trip_id, "running", "Claude plant die Tage nach dem Wetter um …")
+    threading.Thread(target=replan_job, args=(trip_id,), daemon=True).start()
+    return trip_payload(trip_id, user)
+
+
+@app.post("/api/trips/{trip_id}/replan/{action}")
+def replan_done(trip_id: int, action: str, user: dict = Depends(require_user)):
+    """action: undo puts every place back where it was before replanning, keep just clears the notice."""
+    trip = member_trip(trip_id, user)
+    if action == "undo":
+        with db.tx() as con:
+            con.executemany("UPDATE places SET day=?, pos=? WHERE id=? AND trip_id=?",
+                            [(day, pos, pid, trip_id) for pid, day, pos in json.loads(trip["replan"]).get("prev", [])])
+    db.run("UPDATE trips SET replan='{}', updated_at=? WHERE id=?", (time.time(), trip_id))
     return trip_payload(trip_id, user)
 
 
@@ -529,7 +688,8 @@ def suggest_job(trip_id: int, user_id: int, wishes: str, only_day: int | None) -
     try:
         trip = db.one("SELECT * FROM trips WHERE id=?", (trip_id,))
         days = day_count(trip)
-        rows = db.q("SELECT name, day, status, osm_ref FROM places WHERE trip_id=?", (trip_id,))
+        rows = db.q("SELECT id, name, day, status, osm_ref FROM places WHERE trip_id=?", (trip_id,))
+        hotel = next((r["name"] for r in rows if r["id"] == trip["hotel_id"]), None)
         known_names = {r["name"].lower() for r in rows}
         known_refs = {r["osm_ref"] for r in rows if r["osm_ref"]}
         use_ai = ai.enabled()
@@ -537,8 +697,8 @@ def suggest_job(trip_id: int, user_id: int, wishes: str, only_day: int | None) -
             start = date.fromisoformat(trip["start_date"])
             labels = [f"{WEEKDAYS[(start + timedelta(d)).weekday()]}, {(start + timedelta(d)):%d.%m.%Y}" for d in range(days)]
             existing = [r["name"] + (" (abgelehnt)" if r["status"] == "rejected" else f" (Tag {r['day']})" if r["day"] else "")
-                        for r in rows]
-            items = ai.suggest(trip["destination"], labels, existing, wishes, only_day)
+                        for r in rows if r["id"] != trip["hotel_id"]]
+            items = ai.suggest(trip["destination"], labels, existing, wishes, only_day, hotel, _weather_lines(trip))
         else:
             set_job(trip_id, "running", "Suche bekannte Orte bei Wikipedia …")
             items = _wiki_items(trip, days, known_names, only_day)
@@ -564,6 +724,12 @@ def suggest_job(trip_id: int, user_id: int, wishes: str, only_day: int | None) -
                                                        "phone", "wikidata", "wikipedia")}, verified=True)
                 elif not (abs(it["lat"]) <= 90 and geo.distance_m(it["lat"], it["lon"], trip["lat"], trip["lon"]) < 80_000):
                     continue  # neither found nor plausibly located: drop it
+                if it.get("walk_to_next", "").strip():
+                    fields["walk_label"] = it["walk_to_next"].strip()[:120]
+                    # A point the stroll should pass, only if OSM knows it and it is near the stop
+                    via = it.get("walk_via", "").strip() and geo.search(it["walk_via"].strip(), area, bounded=True, limit=1)
+                    if via and geo.distance_m(via[0]["lat"], via[0]["lon"], fields["lat"], fields["lon"]) < 2500:
+                        fields["walk_via"] = json.dumps([via[0]["lat"], via[0]["lon"]])
             else:
                 fields.update(verified=True, wikipedia=f"de:{it['title']}")
             known_names.add(name.lower())
