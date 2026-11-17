@@ -439,7 +439,8 @@ async function openTrip(id) {
     <div class="map-top">
       <a class="round" href="#/" aria-label="Zurück zu den Touren">${ICON.back}</a>
       <div class="offline-pill">Offline · letzter Stand</div>
-      <button class="round" id="locate" aria-label="Meinen Standort zeigen">${ICON.locate}</button>
+      <div class="map-btns"><button class="round" id="sat" aria-label="Satellitenbild ein- oder ausschalten">${ICON.layers}</button>
+      <button class="round" id="locate" aria-label="Meinen Standort zeigen">${ICON.locate}</button></div>
     </div>
     <section class="panel sheet" id="panel"><div class="sheet-in">
       <div class="grip-zone"><div class="handle"></div><div id="panel-head"></div></div>
@@ -457,10 +458,25 @@ async function openTrip(id) {
   map = L.map("map", { zoomControl: false, attributionControl: false }).setView([t.lat, t.lon], 13);
   L.control.attribution({ position: isDesktop() ? "bottomright" : "topright", prefix: false }).addTo(map);
   if (isDesktop()) L.control.zoom({ position: "bottomright" }).addTo(map);
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  const routes = ' · Routen: <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS</a>';
+  const osm = L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19, crossOrigin: true,
-    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> · Routen: <a href="https://routing.openstreetmap.de/about.html" target="_blank" rel="noopener">FOSSGIS</a>',
-  }).addTo(map);
+    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' + routes,
+  });
+  // Satellite: Esri World Imagery, free to use with attribution; the dark-mode filter is switched off for it
+  const sat = L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+    maxZoom: 19, maxNativeZoom: 19, crossOrigin: true,
+    attribution: 'Bilder © Esri, Maxar, Earthstar Geographics · Orte © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>' + routes,
+  });
+  const setSat = (on) => {
+    (on ? osm : sat).remove(); (on ? sat : osm).addTo(map);
+    $("#map").classList.toggle("sat", on); $("#sat").classList.toggle("on", on);
+    try { localStorage.setItem("mapStyle", on ? "sat" : "map"); } catch {}
+  };
+  let satOn = false;
+  try { satOn = localStorage.getItem("mapStyle") === "sat"; } catch {}
+  setSat(satOn);
+  $("#sat").onclick = () => setSat(satOn = !satOn);
   mapLayer = L.layerGroup().addTo(map);
   arrowLayer = L.layerGroup().addTo(map);
   map.on("zoomend", drawArrows);
@@ -709,6 +725,7 @@ function renderDetail() {
   sections.push(`<div class="handover">
       <a class="btn" href="${links.apple}" target="_blank" rel="noopener">Apple Karten</a>
       <a class="btn" href="${links.google}" target="_blank" rel="noopener">Google Maps</a>
+      <a class="btn" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${ll(p)}" target="_blank" rel="noopener">Street View</a>
       <button class="btn vote ${mine ? "on" : ""}" data-act="vote" aria-pressed="${mine}">${ICON.thumb} ${p.votes.length || ""}</button></div>`);
   if (p.id === trip.hotel_id) sections.push('<div class="decide"><button class="btn" data-act="unset-hotel">Nicht mehr als Unterkunft</button></div>');
   else if (p.kind === "lodging") sections.push('<div class="decide"><button class="btn" data-act="set-hotel">Als Unterkunft der Tour festlegen</button></div>');

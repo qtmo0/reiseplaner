@@ -1,5 +1,5 @@
 // Offline support: app shell, the trips already opened, and the map tiles already seen stay readable without network.
-const SHELL = "rp-shell-v7c";
+const SHELL = "rp-shell-v8";
 const DATA = "rp-data-v1";
 const TILES = "rp-tiles-v1";
 const MAX_TILES = 1500;
@@ -61,7 +61,7 @@ async function trim(cache, max) {
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
-  if (url.hostname === "tile.openstreetmap.org" || url.hostname === "upload.wikimedia.org") {
+  if (url.hostname === "tile.openstreetmap.org" || url.hostname === "upload.wikimedia.org" || url.hostname === "server.arcgisonline.com") {
     e.respondWith(cacheFirst(e.request, TILES, MAX_TILES));
   } else if (url.origin !== location.origin) {
     return;

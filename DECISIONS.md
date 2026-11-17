@@ -81,3 +81,5 @@ Jede Entscheidung mit einem Satz Begründung. Stand: Version 1, November 2026.
 - **Vorschläge laufen als Hintergrund-Job mit Fortschrittsanzeige.** Claude plus eine Nominatim-Anfrage pro Sekunde und Ort dauern bis zu einer Minute, zu lang für eine einzelne Anfrage.
 - **Service Worker hält App, zuletzt geladene Reisen und gesehene Kartenkacheln vor (höchstens 1.500 Kacheln).** Das erfüllt „bei schlechtem Netz lesbar“, ohne Kacheln auf Vorrat zu laden, was die OSM-Richtlinie untersagt.
 - **Abfragen an fremde Dienste nennen die App neutral („Reiseplaner“), eine Kontaktadresse nur über `APP_CONTACT`.** Die Betreiber wünschen eine Kontaktangabe, aber deine Adresse soll nicht ungefragt im Code stehen.
+
+- **Satellitenbild von Esri World Imagery, Street View als Link.** Esri stellt die Kacheln mit Quellenangabe frei zur Verfügung und sie reichen bis auf Straßenebene; Sentinel-2 wäre offen lizenziert, mit 10 m pro Pixel aber für eine Stadt zu grob. Street View lässt sich ohne kostenpflichtigen API-Key nicht einbetten, deshalb öffnet ein Link Google Maps direkt im Panorama (`map_action=pano`). Für Apple „Umsehen“ gibt es keinen dokumentierten Link.
